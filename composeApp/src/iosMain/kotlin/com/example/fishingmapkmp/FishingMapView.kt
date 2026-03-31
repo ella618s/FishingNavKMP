@@ -1,0 +1,56 @@
+package com.example.fishingmapkmp
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.interop.UIKitView
+import kotlinx.cinterop.ExperimentalForeignApi
+import platform.CoreLocation.CLLocationCoordinate2DMake
+import platform.MapKit.MKCoordinateRegionMake
+import platform.MapKit.MKCoordinateSpanMake
+import platform.MapKit.MKMapView
+
+@OptIn(ExperimentalForeignApi::class)
+@Composable
+actual fun FishingMapView(
+    modifier: Modifier,
+    initialCenter: Pair<Double, Double>,
+    markerList: List<CustomMarker>,
+    selectedMarker: CustomMarker?,
+    onMapClick: (Double, Double, String) -> Unit,
+    onMarkerClick: (CustomMarker?) -> Unit,
+    onLocationUpdate: (Double, Double) -> Unit, // 🎯 新增這一行：用來傳回目前 GPS 座標
+    onRenameClick: (CustomMarker, String) -> Unit // 🎯 新增參數
+) {
+    val mapView = remember {
+        MKMapView().apply {
+            setUserInteractionEnabled(true)
+            setZoomEnabled(true)
+            setScrollEnabled(true)
+            // iOS 顯示藍點的關鍵
+            setShowsUserLocation(true)
+        }
+    }
+
+    UIKitView(
+        factory = {
+            mapView.apply {
+                setUserInteractionEnabled(true)
+                setScrollEnabled(true)
+                setZoomEnabled(true)
+                setRotateEnabled(true)
+                // 這裡加入一個物理設定：強迫它成為第一響應者
+                becomeFirstResponder()
+            }
+        },
+        modifier = modifier,
+        interactive = true,
+        update = { view ->
+            val center = CLLocationCoordinate2DMake(initialCenter.first, initialCenter.second)
+            val region = MKCoordinateRegionMake(center, MKCoordinateSpanMake(0.05, 0.05))
+            view.setRegion(region, animated = false)
+        }
+    )
+}
