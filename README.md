@@ -25,6 +25,15 @@
 * **實時導航線繪製**：根據當前 GPS 位置與目標漁標，動態繪製 `Polyline` 並即時計算航行距離。
 * **衛星圖資下載**：支援特定區域之衛星圖資預載，確保海上完全無網路環境下仍有視覺背景參考。
 
+## 📱 成果展示
+
+| Android 版 | iOS 版 |
+| :-: | :-: |
+| ![Android Demo](screenshots/android_demo.png) | ![iOS Demo](screenshots/ios_demo.png) |
+
+### 🏗️ KMP 跨平台架構圖
+![KMP Structure](screenshots/kmp_structure.png)
+
 ## 🏗️ 目前開發狀態
 - [x] 跨平台 KMP 專案基礎環境架構與 Ktor 2.3.12 整合
 - [x] **SharedViewModel 跨平台狀態同步邏輯 (StateFlow)**
