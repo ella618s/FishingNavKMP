@@ -16,7 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
-
+import androidx.compose.runtime.collectAsState
 
 @Composable
 fun App() {
@@ -24,6 +24,8 @@ fun App() {
     var selectedMarker by remember { mutableStateOf<CustomMarker?>(null) }
     var showBottomInfo by remember { mutableStateOf(false) }
     var userLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    val viewModel = remember { SharedViewModel() }
+    val markers by viewModel.markerList.collectAsState()
 
     // 使用 remember 監控 selectedMarker，當它變為 null 時，distText 也會消失
     val distText = remember(selectedMarker, userLocation) {
@@ -47,9 +49,7 @@ fun App() {
                 it.copy(name = newName) // 假設你的 CustomMarker 是 data class
             } else it
         }
-        markerList = newList
-        MarkerStorage.saveMarkers(newList)
-
+        MarkerStorage.saveMarkers(markers.map { CustomMarker(it.lat, it.lng, it.name) })
         // 如果正在導航的這個點改名了，同步更新選中的狀態
         if (selectedMarker?.latitude == marker.latitude && selectedMarker?.longitude == marker.longitude) {
             selectedMarker = selectedMarker?.copy(name = newName)
@@ -60,12 +60,18 @@ fun App() {
         FishingMapView(
             modifier = Modifier.fillMaxSize(),
             initialCenter = Pair(25.0330, 121.5654),
-            markerList = markerList,
+            markerList = markers.map { CustomMarker(it.lat, it.lng, it.name) },
             selectedMarker = selectedMarker, // 🎯 確保這裡有傳進去
             onMapClick = { lat, lng, name ->
-                val newList = markerList + CustomMarker(lat, lng, name)
-                markerList = newList
-                MarkerStorage.saveMarkers(newList)
+                viewModel.saveSpot(lat, lng, name)
+                // 為了讓 Android 重開 App 還有資料，同步存入 MarkerStorage
+                val updatedList =
+                    markers.map { CustomMarker(it.lat, it.lng, it.name) } + CustomMarker(
+                        lat,
+                        lng,
+                        name
+                    )
+                MarkerStorage.saveMarkers(updatedList)
             },
             onMarkerClick = { marker ->
                 selectedMarker = marker
@@ -75,7 +81,16 @@ fun App() {
             onLocationUpdate = { lat, lon ->
                 userLocation = Pair(lat, lon)
             },
-            onRenameClick = onUpdateMarkerName // 🎯 傳入改名回呼
+            onRenameClick = onUpdateMarkerName, // 🎯 傳入改名回呼
+
+            onClearAllClick = {
+                // ✅ 執行清空
+                viewModel.clearAllSpots()
+
+                // 清除 Android 本地的導航狀態
+                selectedMarker = null
+                showBottomInfo = false
+            }
         )
 
         // 🎯 修正：底部資訊視窗 (白框)

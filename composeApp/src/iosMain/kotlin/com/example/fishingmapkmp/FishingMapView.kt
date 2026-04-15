@@ -22,15 +22,17 @@ actual fun FishingMapView(
     onMapClick: (Double, Double, String) -> Unit,
     onMarkerClick: (CustomMarker?) -> Unit,
     onLocationUpdate: (Double, Double) -> Unit, // 🎯 新增這一行：用來傳回目前 GPS 座標
-    onRenameClick: (CustomMarker, String) -> Unit // 🎯 新增參數
+    onRenameClick: (CustomMarker, String) -> Unit, // 🎯 新增參數
+    onClearAllClick: () -> Unit
 ) {
     val mapView = remember {
         MKMapView().apply {
             setUserInteractionEnabled(true)
             setZoomEnabled(true)
             setScrollEnabled(true)
-            // iOS 顯示藍點的關鍵
-            setShowsUserLocation(true)
+            setShowsUserLocation(true) // 顯示藍點
+            // 🎯 這裡新增一行：開啟方向光束 (Heading Beam)
+            setUserTrackingMode(platform.MapKit.MKUserTrackingModeFollowWithHeading, animated = true)
         }
     }
 
@@ -48,6 +50,9 @@ actual fun FishingMapView(
         modifier = modifier,
         interactive = true,
         update = { view ->
+            if (view.userTrackingMode != platform.MapKit.MKUserTrackingModeFollowWithHeading) {
+                view.setUserTrackingMode(platform.MapKit.MKUserTrackingModeFollowWithHeading, animated = true)
+            }
             val center = CLLocationCoordinate2DMake(initialCenter.first, initialCenter.second)
             val region = MKCoordinateRegionMake(center, MKCoordinateSpanMake(0.05, 0.05))
             view.setRegion(region, animated = false)

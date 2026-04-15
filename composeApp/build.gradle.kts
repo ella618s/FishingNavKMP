@@ -18,16 +18,19 @@ kotlin {
             }
         }
     }
-    
-    listOf(
-        iosArm64(),
-        iosSimulatorArm64()
-    ).forEach { iosTarget ->
-        iosTarget.binaries.framework {
-            baseName = "ComposeApp"
-            isStatic = false // 先改成 false 試試看
+
+    iosX64()
+    iosArm64()
+    iosSimulatorArm64()
+
+    // 🎯 2. 針對所有 iOS Target 統一配置 Framework
+    targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget> {
+        binaries.framework {
+            baseName = "composeApp"
+            isStatic = true
         }
     }
+
     val ktorVersion = "2.3.12" // 建議使用此穩定版本
     sourceSets {
         androidMain.dependencies {
@@ -55,14 +58,23 @@ kotlin {
             implementation("io.ktor:ktor-client-core:$ktorVersion")
             implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
             implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
-        }
-        iosMain.dependencies {
-            // iOS 專用引擎 (基於 Darwin)
-            implementation("io.ktor:ktor-client-darwin:$ktorVersion")
+            implementation("com.russhwolf:multiplatform-settings-no-arg:1.1.1")
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
+
+        val iosMain by creating {
+            dependsOn(commonMain.get())
+            dependencies {
+                // 🎯 這是解決 iOS 網路請求崩潰的關鍵
+                implementation("io.ktor:ktor-client-darwin:$ktorVersion")
+            }
+        }
+
+        val iosX64Main by getting { dependsOn(iosMain) }
+        val iosArm64Main by getting { dependsOn(iosMain) }
+        val iosSimulatorArm64Main by getting { dependsOn(iosMain) }
     }
 }
 
