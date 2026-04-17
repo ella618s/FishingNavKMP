@@ -9,7 +9,7 @@
 * **離線地圖引擎 (OSMDroid)**：深度整合 Android 原生 OSMDroid 框架，支援本地快取與離線衛星圖資渲染。
 * **現代化 UI 實作**：全專案採用 Jetpack Compose 與 SwiftUI，具備流暢的互動體驗。
 
-## 🛠️ 核心技術突破 (Android 穩定性與架構整合)
+## 🛠️ 核心技術突破 (Android 穩定性與架構整合、Android & iOS 跨平台整合)
 針對 OSMDroid 在 Compose 環境下的穩定性與 KMP 狀態同步，本專案成功解決以下挑戰：
 
 * **跨平台資料源同步 (Single Source of Truth)**：為解決 Android 原生 View 與 Compose 狀態不同步的問題，將資料重心移至 `SharedViewModel`，透過 `StateFlow` 強制觸發 `AndroidView` 的 `update` 區塊，實現「一處修改，兩端同步」。
@@ -17,6 +17,10 @@
     * 成功阻斷 OSMDroid 預設的 InfoWindow 彈窗，改以 Compose `AlertDialog` 實作自定義改名邏輯。
     * 實作「雙擊觸發」機制：點選標記進入導航模式，再次點選則開啟改名視窗，優化觸控體驗。
 * **異步 UI 衝突修復 (WindowLeaked)**：解決了 `downloadAreaAsync` 背景下載時 Dialog 生命週期崩潰問題。透過自定義 `CacheManagerCallback` 與 `CoroutineScope` 實作靜默下載模式。
+* **跨平台瓦片預載演算法**：在 `SharedViewModel` 中實作 Mercator 投影公式，將經緯度範圍精確轉換為瓦片座標 (X, Y)，並透過 Ktor 進行異步多線程下載。
+* **iOS 進度監聽與類型對接**：
+  * 解決 Kotlin `StateFlow` 與 Swift `AsyncSequence` 的不匹配問題，透過 Kotlin 端封裝 `watchProgress` 監聽器達成兩端進度同步。
+  * 成功處理 `KotlinIntRange` 與 Swift `ClosedRange` 的類型映射，確保 iOS 端能正確下達下載指令。
 * **執行緒調度優化**：精確配置 `Dispatchers.Main` 與 `Dispatchers.IO` 的切換，確保下載任務與 UI 提示（Toast/Dialog）在正確執行緒運作。
 * **高效能地圖渲染**：透過 `removeAll` 邏輯優化 `update` 區塊，避免 Compose 重複渲染導致的標記重疊與記憶體洩漏。
 
@@ -25,14 +29,13 @@
 * **實時導航線繪製**：根據當前 GPS 位置與目標漁標，動態繪製 `Polyline` 並即時計算航行距離。
 * **衛星圖資下載**：支援特定區域之衛星圖資預載，確保海上完全無網路環境下仍有視覺背景參考。
 
-## 📱 成果展示
+### Android 與 iOS 運行畫面
+| Android 衛星導航 | iOS 地圖模式 |
+| :---: | :---: |
+| ![Android Screen](./screenshots/android_demo.png) | ![iOS Screen](./screenshots/ios_demo.png) |
 
-| Android 版 | iOS 版 |
-| :-: | :-: |
-| ![Android Demo](screenshots/android_demo.png) | ![iOS Demo](screenshots/ios_demo.png) |
-
-### 🏗️ KMP 跨平台架構圖
-![KMP Structure](screenshots/kmp_structure.png)
+### KMP 跨平台架構
+![KMP Architecture](./screenshots/kmp_arch.png)
 
 ## 🏗️ 目前開發狀態
 - [x] 跨平台 KMP 專案基礎環境架構與 Ktor 2.3.12 整合
@@ -43,7 +46,7 @@
 - [x] 行政院政府 Open Data 風場資訊自動同步 (GeoJSON)
 - [x] 實時方位校正與距離計算演算法 (Kotlin Shared Logic)
 - [x] iOS 端 Apple Maps 整合與實時定位數據對接
-- [⚠️] iOS 端離線地圖支援 (架構預留，MBTiles 整合開發中)
+- [x] **iOS 端離線下載 UI (ProgressView) 與邏輯對接**
 
 ## 📄 授權與聲明 (License & Disclaimer)
 * **版權所有**：© 2026 Ella Liu. All rights reserved.

@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var isFollowMode = false
     @StateObject private var viewModel = IOSMapViewModel()
     @State private var showOfflineAlert = false
+    @State private var mapView: MKMapView? = nil
     
     var body: some View {
         ZStack {
@@ -16,9 +17,25 @@ struct ContentView: View {
                 mapType: selectedMapType,
                 showRoute: $isNavigating,
                 isFollowMode: $isFollowMode,
-                viewModel: viewModel
+                viewModel: viewModel,
+                mapViewInstance: $mapView // 🎯 傳入剛定義的變數
             )
             .edgesIgnoringSafeArea(.all)
+            
+            if viewModel.downloadProgress > 0 && viewModel.downloadProgress < 1 {
+                VStack {
+                    VStack {
+                        ProgressView(value: viewModel.downloadProgress, total: 1.0)
+                        Text("預載中... \(Int(viewModel.downloadProgress * 100))%")
+                            .foregroundColor(.white)
+                    }
+                    .padding()
+                    .background(Color.black.opacity(0.8))
+                    .cornerRadius(10)
+                    Spacer()
+                }
+                .padding(.top, 60)
+            }
             
             // ✅ 使用這個組合將距離框推向左上角
             VStack {
@@ -84,16 +101,23 @@ struct ContentView: View {
                     }
                     
                     MapControlButton(title: "預載此區") {
-                        // 🎯 這裡未來將串接 MBTiles 下載邏輯
-                        // 目前先以 Alert 形式呈現，展現功能規劃
-                        showOfflineAlert = true
-                    }
-                    .alert(isPresented: $showOfflineAlert) {
-                        Alert(
-                            title: Text("離線地圖預載"),
-                            message: Text("iOS 衛星圖資預載功能目前開發中，預計將透過 MBTiles 實作。"),
-                            dismissButton: .default(Text("確定"))
-                        )
+                        if let mv = self.mapView {
+                            let region = mv.region
+                            
+                            let north = region.center.latitude + region.span.latitudeDelta / 2
+                            let south = region.center.latitude - region.span.latitudeDelta / 2
+                            let east = region.center.longitude + region.span.longitudeDelta / 2
+                            let west = region.center.longitude - region.span.longitudeDelta / 2
+                            
+                            viewModel.sharedVM.downloadArea(
+                                north: north,
+                                south: south,
+                                east: east,
+                                west: west,
+                                zoomLevels: KotlinIntRange(start: 10, endInclusive: 15)
+                            )
+                            self.showOfflineAlert = true
+                        }
                     }
                     Spacer()
                 }
@@ -193,8 +217,9 @@ class IOSMapViewModel: ObservableObject {
     @Published var savedMarkers: [MKPointAnnotation] = [] // iOS 端的標記列表
     private var pendingLocation: CLLocationCoordinate2D? // 暫存點擊的位置
     @Published var newSpotName: String = ""// 綁定輸入框的文字
+    @Published var downloadProgress: Float = 0.0
     // 這是來自 Kotlin 的 SharedViewModel
-    private let sharedVM = SharedViewModel()
+    let sharedVM = SharedViewModel()
     // 顯示 Alert 的狀態
     @Published var showAlert = false
     @Published var lastClickedLocation: String = ""
@@ -219,6 +244,14 @@ class IOSMapViewModel: ObservableObject {
                 return annotation
             }
         }
+        
+        sharedVM.watchProgress { progress in
+            // progress 是 Kotlin 傳過來的 Float，Swift 這裡會識別為 Float
+            DispatchQueue.main.async {
+                self.downloadProgress = Float(truncating: progress as! NSNumber)
+            }
+        }
+        
     }
     
     // 準備編輯

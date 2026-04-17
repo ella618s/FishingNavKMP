@@ -24,6 +24,27 @@ object ApiClient {
         }
     }
 
+    // 🎯 實作抓取地圖瓦片的功能
+    suspend fun fetchTile(zoom: Int, x: Int, y: Int): ByteArray? {
+        return try {
+            // 使用 OpenStreetMap 的標準瓦片伺服器路徑
+            val url = "https://tile.openstreetmap.org/$zoom/$x/$y.png"
+            val response: HttpResponse = client.get(url) {
+                // OSM 規定必須加上 User-Agent 以免被封鎖
+                header("User-Agent", "FishingNavKMP/1.0")
+            }
+
+            if (response.status.value == 200) {
+                response.readBytes() // 回傳圖片的二進位資料
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            println("❌ 瓦片抓取失敗 ($zoom/$x/$y): ${e.message}")
+            null
+        }
+    }
+
     @Throws(Exception::class)
     suspend fun fetchWindFarmZones(): WindFarmGeoJson = withContext(Dispatchers.Default) {
         val urlString = "https://windpower.geologycloud.tw/data/Economy/wpzone_approved?f=geojson"

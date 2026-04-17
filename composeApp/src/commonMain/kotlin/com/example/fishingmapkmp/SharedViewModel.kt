@@ -4,9 +4,14 @@ import androidx.lifecycle.ViewModel
 import com.russhwolf.settings.Settings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
+import kotlin.math.* // 👈 改用 Kotlin 標配的數學函式庫
 
 
 // 用來存放點位資訊的資料類別
@@ -22,13 +27,14 @@ class SharedViewModel : ViewModel() {
     private val settings: Settings = Settings()
     private val json = Json { ignoreUnknownKeys = true }
     private val STORAGE_KEY = "saved_fishing_spots"
-
     private val _windFarmData = MutableStateFlow<WindFarmGeoJson?>(null)
     val windFarmData: StateFlow<WindFarmGeoJson?> = _windFarmData
 
     // 初始化時直接從儲存空間讀取舊資料
     private val _markerList = MutableStateFlow<List<FishingSpot>>(loadSavedSpots())
     val markerList: StateFlow<List<FishingSpot>> = _markerList
+    private val _downloadProgress = MutableStateFlow(0f)
+    val downloadProgress: StateFlow<Float> = _downloadProgress
 
     @Throws(Exception::class)
     suspend fun getWindFarmData(): WindFarmGeoJson {
@@ -93,14 +99,102 @@ class SharedViewModel : ViewModel() {
     fun clearAllSpots() {
         // 1. 清空記憶體列表 (這會讓兩端的畫面大頭針立刻消失)
         _markerList.value = emptyList()
-
         // 2. 針對 iOS 的存檔邏輯
         saveAllSpotsToSettings(emptyList())
-
         // ✅ 3. 針對 Android 的存檔邏輯 (使用 MarkerStorage)
-        // 這樣 Android 下次重開 App 就不會再讀到舊資料
         MarkerStorage.saveMarkers(emptyList())
-
         println("🗑️ 已清空兩端的所有點位與持久化資料")
+    }
+
+    fun updateDownloadProgress(progress: Float) {
+        _downloadProgress.value = progress
+    }
+
+    // 🎯 新增下載瓦片的邏輯
+    fun downloadArea(
+        north: Double,
+        south: Double,
+        east: Double,
+        west: Double,
+        zoomLevels: IntRange
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            var downloadedCount = 0
+            val totalTiles = calculateTotalTiles(north, south, east, west, zoomLevels)
+
+            for (zoom in zoomLevels) {
+                val (minX, maxX, minY, maxY) = getTileRange(north, south, east, west, zoom)
+                for (x in minX..maxX) {
+                    for (y in minY..maxY) {
+                        val tileData = ApiClient.fetchTile(zoom, x, y) // 透過 Ktor 抓取
+                        if (tileData != null) {
+                            // 🎯 這裡會呼叫各平台的持久化儲存 (Android 存 File, iOS 存 Documents)
+                            saveTileToLocal(zoom, x, y, tileData)
+
+                            downloadedCount++
+                            updateDownloadProgress(downloadedCount.toFloat() / totalTiles)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun watchProgress(onUpdate: (Float) -> Unit) {
+        viewModelScope.launch(Dispatchers.Main) {
+            downloadProgress.collect {
+                onUpdate(it)
+            }
+        }
+    }
+
+    // 🎯計算區域內總共有多少張圖片要下載
+    private fun calculateTotalTiles(
+        north: Double,
+        south: Double,
+        east: Double,
+        west: Double,
+        zoomLevels: IntRange
+    ): Int {
+        var total = 0
+        for (zoom in zoomLevels) {
+            val (minX, maxX, minY, maxY) = getTileRange(north, south, east, west, zoom)
+            total += (maxX - minX + 1) * (maxY - minY + 1)
+        }
+        return total
+    }
+
+    // 🎯將經緯度範圍轉為瓦片座標 (X, Y)
+    private fun getTileRange(
+        north: Double,
+        south: Double,
+        east: Double,
+        west: Double,
+        zoom: Int
+    ): List<Int> {
+        val n = 2.0.pow(zoom.toDouble()) // 🎯 改用 pow 擴充函式
+
+        val minX = floor((west + 180.0) / 360.0 * n).toInt() // 🎯 移除 Math.
+        val maxX = floor((east + 180.0) / 360.0 * n).toInt()
+
+        // 緯度轉 Y 軸邏輯修正
+        val minY =
+            floor((1.0 - ln(tan(north.toRadians()) + 1.0 / cos(north.toRadians())) / PI) / 2.0 * n).toInt()
+        val maxY =
+            floor((1.0 - ln(tan(south.toRadians()) + 1.0 / cos(south.toRadians())) / PI) / 2.0 * n).toInt()
+
+        return listOf(minX, maxX, minY, maxY)
+    }
+
+    // 🎯 輔助函式：角度轉弧度 (KMP 通用寫法)
+    private fun Double.toRadians(): Double = this * PI / 180.0
+
+    private fun saveTileToLocal(zoom: Int, x: Int, y: Int, data: ByteArray) {
+        // 這裡可以先印 log 測試，實際儲存邏輯會因平台而異
+        println("💾 正在儲存瓦片: $zoom/$x/$y, 大小: ${data.size} bytes")
+
+        // TODO: 串接平台專屬的 File API
+        // Android: 存入 /osmdroid/tiles
+        // iOS: 存入 Documents/tiles
     }
 }

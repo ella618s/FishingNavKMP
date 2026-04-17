@@ -9,6 +9,7 @@ struct AppleMapView: UIViewRepresentable {
     @Binding var isFollowMode: Bool
     @ObservedObject var viewModel: IOSMapViewModel
     @State var currentRoute: MKRoute? = nil // 存放計算好的路線
+    @Binding var mapViewInstance: MKMapView?
     
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
@@ -29,6 +30,9 @@ struct AppleMapView: UIViewRepresentable {
         // 點擊手勢
         let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
         mapView.addGestureRecognizer(tapGesture)
+        DispatchQueue.main.async {
+            self.mapViewInstance = mapView
+        }
         return mapView
     }
     
