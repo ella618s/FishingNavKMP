@@ -22,6 +22,11 @@ data class FishingSpot(
     val name: String
 )
 
+enum class NavigationMode {
+    LAND,   // 陸地模式
+    SEA     // 海上模式
+}
+
 class SharedViewModel : ViewModel() {
     // 初始化 Settings 與 Json 處理器
     private val settings: Settings = Settings()
@@ -35,6 +40,9 @@ class SharedViewModel : ViewModel() {
     val markerList: StateFlow<List<FishingSpot>> = _markerList
     private val _downloadProgress = MutableStateFlow(0f)
     val downloadProgress: StateFlow<Float> = _downloadProgress
+    // 宣告一個 StateFlow 讓 iOS 和 Android 畫面能即時知道目前是陸地還是海上導航
+    private val _currentMode = MutableStateFlow(NavigationMode.SEA) // 預設為海上
+    val currentMode: StateFlow<NavigationMode> = _currentMode
 
     @Throws(Exception::class)
     suspend fun getWindFarmData(): WindFarmGeoJson {
@@ -196,5 +204,60 @@ class SharedViewModel : ViewModel() {
         // TODO: 串接平台專屬的 File API
         // Android: 存入 /osmdroid/tiles
         // iOS: 存入 Documents/tiles
+    }
+
+    /**
+     * AI 幾何分類器：根據目前位置自動判斷是陸地還是海上
+     */
+    fun detectEnvironment(lat: Double, lng: Double): NavigationMode {
+        // 台灣本島與近岸的大致經緯度邊界
+        val taiwanNorth = 25.3
+        val taiwanSouth = 21.8
+        val taiwanWest = 120.0
+        val taiwanEast = 122.0
+
+        return if (lat in taiwanSouth..taiwanNorth && lng in taiwanWest..taiwanEast) {
+            // 在這個方框內，代表在台灣陸地或極近岸
+            NavigationMode.LAND
+        } else {
+            // 超出方框，代表已經駛向外海
+            NavigationMode.SEA
+        }
+    }
+
+    /**
+     * 智慧全地形路徑規劃
+     * 回傳一個座標列表，供兩端地圖繪製 Polyline
+     */
+    fun planSmartRoute(
+        currentLat: Double,
+        currentLng: Double,
+        targetLat: Double,
+        targetLng: Double,
+        targetName: String
+    ): List<Pair<Double, Double>> {
+        // 1. 自動偵測環境
+        val mode = detectEnvironment(currentLat, currentLng)
+        _currentMode.value = mode // 更新狀態
+
+        return when (mode) {
+            NavigationMode.SEA -> {
+                println("🌊 AI 偵測：目前處於海域，啟用大圓直線導航")
+                // 海上導航：直接連成直線，回傳 起點與終點
+                listOf(
+                    Pair(currentLat, currentLng),
+                    Pair(targetLat, targetLng)
+                )
+            }
+            NavigationMode.LAND -> {
+                println("🚗 AI 偵測：目前處於陸地，啟用路網導航架構")
+                // 陸地導航：這裡預留給未來的離線路網演算法
+                // 目前先模擬回傳起點與終點，確保畫面編譯正常
+                listOf(
+                    Pair(currentLat, currentLng),
+                    Pair(targetLat, targetLng)
+                )
+            }
+        }
     }
 }

@@ -32,11 +32,13 @@ actual fun FishingMapView(
     initialCenter: Pair<Double, Double>,
     markerList: List<CustomMarker>,
     selectedMarker: CustomMarker?,
+    currentMode: NavigationMode, // 🎯 接收來自 ViewModel 的 AI 模式狀態
     onMapClick: (Double, Double, String) -> Unit,
     onMarkerClick: (CustomMarker?) -> Unit,
-    onLocationUpdate: (Double, Double) -> Unit, // 🎯 新增這一行：用來傳回目前 GPS 座標
+    onLocationUpdate: (Double, Double) -> Unit, // 🎯 用來傳回目前 GPS 座標
     onRenameClick: (CustomMarker, String) -> Unit, // 🎯 新增參數
-    onClearAllClick: () -> Unit
+    onClearAllClick: () -> Unit,
+    planRoute: (Double, Double, Double, Double, String) -> List<Pair<Double, Double>> // 🎯 傳入 KMP 智慧路徑規劃方法
 ) {
     val context = LocalContext.current
     var isSatelliteMode by remember { mutableStateOf(false) }
@@ -216,11 +218,21 @@ actual fun FishingMapView(
                     mapView.overlays.add(m)
                 }
 
-                // 🎯 修正點 3：畫導航線 (僅在非 null 時)
+                // 🎯 修正點 3：畫導航線 (僅在非 null 時,整合 AI 智慧全地形路徑)
                 selectedMarker?.let { target ->
                     locationOverlayRef?.myLocation?.let { myLoc ->
+                        // 呼叫傳進來的 KMP AI 智慧路徑規劃
+                        val routePoints = planRoute(
+                            myLoc.latitude,       // p1: 目前緯度
+                            myLoc.longitude,      // p2: 目前經度
+                            target.latitude,      // p3: 目標緯度
+                            target.longitude,     // p4: 目標經度
+                            target.name           // p5: 目標名稱
+                        )
+
                         val line = Polyline(mapView).apply {
-                            setPoints(listOf(myLoc, GeoPoint(target.latitude, target.longitude)))
+                            // 將 KMP 回傳的 Pair 列表轉成 OSMDroid 的 GeoPoint 列表
+                            setPoints(routePoints.map { GeoPoint(it.first, it.second) })
                             outlinePaint.color = android.graphics.Color.RED
                             outlinePaint.strokeWidth = 12f
                         }
@@ -262,6 +274,28 @@ actual fun FishingMapView(
                         fontSize = 20.sp,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                     )
+                }
+
+                // 🎯 3. AI 全地形環境狀態標籤 (顯示在中上方)
+                Surface(
+                    modifier = Modifier
+                        .padding(top = 24.dp)
+                        .align(Alignment.TopCenter),
+                    color = if (currentMode == NavigationMode.LAND) Color(0xFFE65100).copy(alpha = 0.85f) else Color(0xFF0D47A1).copy(alpha = 0.85f), // 陸地橘色，海上藍色
+                    shape = RoundedCornerShape(20.dp),
+                    shadowElevation = 6.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (currentMode == NavigationMode.LAND) "🚗 AI 辨識：陸地路網模式" else "🌊 AI 辨識：海域直線模式",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                        )
+                    }
                 }
             }
         }

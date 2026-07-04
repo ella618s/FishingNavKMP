@@ -19,11 +19,13 @@ actual fun FishingMapView(
     initialCenter: Pair<Double, Double>,
     markerList: List<CustomMarker>,
     selectedMarker: CustomMarker?,
+    currentMode: NavigationMode, // 🎯 接收來自 ViewModel 的 AI 模式狀態
     onMapClick: (Double, Double, String) -> Unit,
     onMarkerClick: (CustomMarker?) -> Unit,
-    onLocationUpdate: (Double, Double) -> Unit, // 🎯 新增這一行：用來傳回目前 GPS 座標
+    onLocationUpdate: (Double, Double) -> Unit, // 🎯 用來傳回目前 GPS 座標
     onRenameClick: (CustomMarker, String) -> Unit, // 🎯 新增參數
-    onClearAllClick: () -> Unit
+    onClearAllClick: () -> Unit,
+    planRoute: (Double, Double, Double, Double, String) -> List<Pair<Double, Double>> // 🎯 傳入 KMP 智慧路徑規劃方法
 ) {
     val mapView = remember {
         MKMapView().apply {

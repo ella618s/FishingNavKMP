@@ -2,10 +2,8 @@ package com.example.fishingmapkmp
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +24,7 @@ fun App() {
     var userLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     val viewModel = remember { SharedViewModel() }
     val markers by viewModel.markerList.collectAsState()
+    val currentMode by viewModel.currentMode.collectAsState()
 
     // 使用 remember 監控 selectedMarker，當它變為 null 時，distText 也會消失
     val distText = remember(selectedMarker, userLocation) {
@@ -90,6 +89,14 @@ fun App() {
                 // 清除 Android 本地的導航狀態
                 selectedMarker = null
                 showBottomInfo = false
+            },
+            // 🎯 補上第一個新參數：傳入從 ViewModel 收到的目前模式
+            currentMode = currentMode,
+
+            // 🎯 補上第二個新參數：實作 AI 智慧路徑規劃的銜接
+            planRoute = { myLat, myLng, targetLat, targetLng, targetName ->
+                // 🎯 直接把 5 個基礎參數傳給 ViewModel，把舊的 val spot = FishingSpot(...) 刪掉！
+                viewModel.planSmartRoute(myLat, myLng, targetLat, targetLng, targetName)
             }
         )
 
