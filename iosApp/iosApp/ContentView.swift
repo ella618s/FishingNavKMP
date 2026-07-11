@@ -7,8 +7,10 @@ struct ContentView: View {
     @State private var selectedMapType: MKMapType = .standard
     @State private var isFollowMode = false
     @StateObject private var viewModel = IOSMapViewModel()
+    @StateObject var myKmpBridge = MapViewModel() // 🎯 建立你專屬新寫的 MapViewModel，用來做為 KMP 狀態監聽的橋樑
     @State private var showOfflineAlert = false
     @State private var mapView: MKMapView? = nil
+    @State private var aiModeText: String = "🌊 AI 辨識：海域直線模式"  // 🎯 宣告一個用來即時刷新 UI 的變數，預設為海域模式
     
     var body: some View {
         ZStack {
@@ -17,10 +19,25 @@ struct ContentView: View {
                 mapType: selectedMapType,
                 showRoute: $isNavigating,
                 isFollowMode: $isFollowMode,
-                viewModel: viewModel,
+                viewModel: self.viewModel, // 傳給原本舊的 KMP IOSMapViewModel 參數
+                kmpBridge: self.myKmpBridge, // 🎯 正確傳入你用來接 watchCurrentMode 水管的核心 MapViewModel！
                 mapViewInstance: $mapView // 🎯 傳入剛定義的變數
             )
             .edgesIgnoringSafeArea(.all)
+            
+            // 🎯 把這個浮動標籤文字元件，加在你的畫面上方（例如放進 ZStack 的最上層）
+            VStack {
+                Text(aiModeText)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(8)
+                    .padding(.top, 10) // 讓它漂亮地浮在畫面上方
+                
+                Spacer() // 把標籤推到頂部
+            }
             
             if viewModel.downloadProgress > 0 && viewModel.downloadProgress < 1 {
                 VStack {
@@ -185,6 +202,19 @@ struct ContentView: View {
                 Button("取消", role: .cancel) { }
             }
             .animation(.spring(), value: viewModel.showDistanceBottomInfo) // 開關動畫
+        }
+        .onAppear {
+            // 🚀 修正關鍵：經由 myKmpBridge 肚子裡的 sharedVM 去啟動監聽水管！
+            myKmpBridge.sharedVM.watchCurrentMode { modeString in
+                DispatchQueue.main.async {
+                    if modeString == "LAND" {
+                        self.aiModeText = "🚗 AI 辨識：陸地路網模式"
+                    } else {
+                        self.aiModeText = "🌊 AI 辨識：海域直線模式"
+                    }
+                    print("=== 🍏 iOS 成功接收推播：目前導航狀態更新為 -> [\(modeString)] ===")
+                }
+            }
         }
         .task {
             await viewModel.fetchWindFarms()

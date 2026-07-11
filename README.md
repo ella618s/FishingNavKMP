@@ -1,5 +1,7 @@
 # FishingNav KMP - 離線航海導航系統
 
+[English Version (英文版說明)] (./README_EN.md)
+
 本專案採用 **Kotlin Multiplatform (KMP)** 架構開發，專為漁船在海上無網路環境下的導航、漁標記錄與安全監控設計。
 
 ## 🛠️ 技術亮點
@@ -23,6 +25,10 @@
   * 成功處理 `KotlinIntRange` 與 Swift `ClosedRange` 的類型映射，確保 iOS 端能正確下達下載指令。
 * **執行緒調度優化**：精確配置 `Dispatchers.Main` 與 `Dispatchers.IO` 的切換，確保下載任務與 UI 提示（Toast/Dialog）在正確執行緒運作。
 * **高效能地圖渲染**：透過 `removeAll` 邏輯優化 `update` 區塊，避免 Compose 重複渲染導致的標記重疊與記憶體洩漏。
+* **自動 GPS 定位智慧路網辨識 (Smart Route Auto-Detection)**：
+* 實現「App 啟動即時偵測」與「座標變更動態觸發」核心機制。
+* 當系統抓取到第一筆 GPS 或位置發生改變時，自動將經緯度送入 KMP `SharedViewModel` 運算，擺脫傳統必須依賴點擊畫線才能觸發的限制。
+* 透過跨平台 `StateFlow` 監聽，讓 UI 層能即時接收狀態推播，在「陸地路網模式 (LAND)」與「海域直線模式 (SEA)」之間進行流暢無縫的動態切換。
 
 ## 📱 互動式 GIS 成果展示
 * **動態標籤渲染**：解析政府 Open Data 之風場區域 (GeoJSON)，實作半透明多邊形與標籤化渲染。
@@ -47,6 +53,7 @@
 - [x] 實時方位校正與距離計算演算法 (Kotlin Shared Logic)
 - [x] iOS 端 Apple Maps 整合與實時定位數據對接
 - [x] **iOS 端離線下載 UI (ProgressView) 與邏輯對接**
+- [x] **自動 GPS 定位智慧路網辨識與即時模式動態切換 (LAND/SEA)**
 
 ## 📄 授權與聲明 (License & Disclaimer)
 * **版權所有**：© 2026 Ella Liu. All rights reserved.

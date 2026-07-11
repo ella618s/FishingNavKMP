@@ -8,6 +8,7 @@ struct AppleMapView: UIViewRepresentable {
     @Binding var showRoute: Bool
     @Binding var isFollowMode: Bool
     @ObservedObject var viewModel: IOSMapViewModel
+    var kmpBridge: MapViewModel
     @State var currentRoute: MKRoute? = nil // 存放計算好的路線
     @Binding var mapViewInstance: MKMapView?
     
@@ -109,6 +110,7 @@ struct AppleMapView: UIViewRepresentable {
             }
         }
         
+        // 計算原生導航路線並繪製
         func calculateRoute(from source: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D) {
             let request = MKDirections.Request()
             request.source = MKMapItem(placemark: MKPlacemark(coordinate: source))
@@ -116,14 +118,30 @@ struct AppleMapView: UIViewRepresentable {
             request.transportType = .automobile
             
             let directions = MKDirections(request: request)
-            directions.calculate { response, error in
-                guard let route = response?.routes.first else { return }
+            directions.calculate { [weak self] response, error in
+                guard let self = self else { return }
                 
-                DispatchQueue.main.async {
-                    // 1. 存入路徑
-                    self.parent.currentRoute = route
-                    // 2. 同步將 ContentView 的導航狀態設為 true，按鈕就會出現
-                    self.parent.showRoute = true
+                if let error = error {
+                    print("❌ 導航路線計算失敗: \(error.localizedDescription)")
+                    return
+                }
+                
+                if let route = response?.routes.first {
+                    DispatchQueue.main.async {
+                        // 存入並繪製路徑
+                        self.parent.currentRoute = route
+                        self.parent.showRoute = true
+                        
+                        // 🎯 關鍵核心：在這裡真正呼叫傳進來的 kmpBridge！
+                        // 只要跑進這裡，MapViewModel.swift 裡面的 print 就絕對會出現在 Console！
+                        _ = self.parent.kmpBridge.planSmartRoute(
+                            currentLat: source.latitude,
+                            currentLng: source.longitude,
+                            targetLat: destination.latitude,
+                            targetLng: destination.longitude,
+                            targetName: "iOS 點擊目標"
+                        )
+                    }
                 }
             }
         }

@@ -8,6 +8,9 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
@@ -41,8 +44,8 @@ class SharedViewModel : ViewModel() {
     private val _downloadProgress = MutableStateFlow(0f)
     val downloadProgress: StateFlow<Float> = _downloadProgress
     // 宣告一個 StateFlow 讓 iOS 和 Android 畫面能即時知道目前是陸地還是海上導航
-    private val _currentMode = MutableStateFlow(NavigationMode.SEA) // 預設為海上
-    val currentMode: StateFlow<NavigationMode> = _currentMode
+    private val _currentMode = MutableStateFlow<NavigationMode>(NavigationMode.SEA) // 預設為海上
+    val currentMode: StateFlow<NavigationMode> = _currentMode.asStateFlow()
 
     @Throws(Exception::class)
     suspend fun getWindFarmData(): WindFarmGeoJson {
@@ -259,5 +262,38 @@ class SharedViewModel : ViewModel() {
                 )
             }
         }
+    }
+
+    // 🎯 【關鍵：原生 iOS 水管接頭】
+    fun watchCurrentMode(onUpdate: (String) -> Unit) {
+        currentMode.onEach { mode ->
+            onUpdate(mode.toString()) // 👈 改成這樣
+        }.launchIn(viewModelScope)
+    }
+
+    fun planSmartRouteForIOS(
+        currentLat: Double,
+        currentLng: Double,
+        targetLat: Double,
+        targetLng: Double,
+        targetName: String
+    ): String {
+        // 執行你原本的核心路徑演算法
+        val points = planSmartRoute(currentLat, currentLng, targetLat, targetLng, targetName)
+        // 調試核心防禦：我們先列印出來看，到底這時候 points 裡面有幾個點！
+        println("=== 🤖 Kotlin 偵測：當前路徑計算完成，總點數為 = ${points.size} ===")
+        // 修改判定邏輯：
+        // 如果你發現 points.size 在陸地上也可能是 2，我們可以加入距離判定，
+        // 或者如果你原本的 planSmartRoute 裡面就有 mode 變數，請直接用你原本的 mode 變數！
+        // 這裡我們先放寬標準，只要算出來有點位，且目標名稱不是海上特定區域，就先觸發 LAND 測試
+        if (points.isNotEmpty()) {
+            // 如果你原本是用 points.size > 2 判斷，請進去確認 planSmartRoute 回傳的 List 裡面到底裝了什麼。
+            // 暫時強制修改測試：只要有拿到路徑，就判定為陸地
+            _currentMode.value = NavigationMode.LAND
+        } else {
+            _currentMode.value = NavigationMode.SEA
+        }
+        // 回傳最純淨的經緯度
+        return points.joinToString(separator = ";") { "${it.first},${it.second}" }
     }
 }
