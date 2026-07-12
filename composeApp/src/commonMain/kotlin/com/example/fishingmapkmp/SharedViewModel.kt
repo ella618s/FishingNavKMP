@@ -46,6 +46,30 @@ class SharedViewModel : ViewModel() {
     // 宣告一個 StateFlow 讓 iOS 和 Android 畫面能即時知道目前是陸地還是海上導航
     private val _currentMode = MutableStateFlow<NavigationMode>(NavigationMode.SEA) // 預設為海上
     val currentMode: StateFlow<NavigationMode> = _currentMode.asStateFlow()
+    // 🎯 儲存當前的航速（單位：公尺/秒，預設 0.0）與航向（單位：度，預設 0.0）
+    private val _currentSpeed = MutableStateFlow(0.0)
+    private val _currentHeading = MutableStateFlow(0.0)
+
+    // 🎯 智慧防撞警報水管：如果預測有危險會灌入警告訊息，安全則為 null
+    private val _collisionAlert = MutableStateFlow<String?>(null)
+    val collisionAlert: StateFlow<String?> = _collisionAlert.asStateFlow()
+
+    // 🎯 提供給 iOS 監聽警報的水管橋樑
+    fun watchCollisionAlert(onUpdate: (String?) -> Unit) {
+        viewModelScope.launch {
+            collisionAlert.collect { alert ->
+                onUpdate(alert)
+            }
+        }
+    }
+
+    /**
+     * 提供外部（iOS/Android）主動更新航速與航向的市場介面
+     */
+    fun updateShipStatus(speedMps: Double, headingDegrees: Double) {
+        _currentSpeed.value = speedMps
+        _currentHeading.value = headingDegrees
+    }
 
     @Throws(Exception::class)
     suspend fun getWindFarmData(): WindFarmGeoJson {
@@ -229,8 +253,7 @@ class SharedViewModel : ViewModel() {
     }
 
     /**
-     * 智慧全地形路徑規劃
-     * 回傳一個座標列表，供兩端地圖繪製 Polyline
+     * 智慧全地形路徑規劃 (Android 端使用)
      */
     fun planSmartRoute(
         currentLat: Double,
@@ -243,23 +266,65 @@ class SharedViewModel : ViewModel() {
         val mode = detectEnvironment(currentLat, currentLng)
         _currentMode.value = mode // 更新狀態
 
+        // =========================================================================
+        // 🎯 🚀 【Android 同步啟動：智慧地理圍欄防撞預測邏輯】 🚀
+        // =========================================================================
+        val currentLatLng = GisGeometryUtils.LatLng(currentLat, currentLng)
+
+        // A. 預測未來 3 分鐘 (180 秒) 的船隻行進軌跡線段
+        val predictedLatLng = GisGeometryUtils.predictFutureLocation(
+            current = currentLatLng,
+            speedMps = _currentSpeed.value,
+            headingDegrees = _currentHeading.value,
+            durationSeconds = 180.0
+        )
+
+        var hasCollisionRisk = false
+        var dangerousWindFarmName = ""
+
+        // B. 遍歷風場多邊形邊界
+        _windFarmData.value?.features?.forEach { feature ->
+            val name = feature.properties?.wpName ?: "未名風場"
+            val polygonRings = feature.geometry?.coordinates
+            if (polygonRings != null && polygonRings.isNotEmpty()) {
+                val ringPoints = polygonRings[0]
+
+                if (ringPoints.size > 1) {
+                    for (i in 0 until ringPoints.size - 1) {
+                        val pt1 = ringPoints[i]
+                        val pt2 = ringPoints[i + 1]
+
+                        if (pt1.size >= 2 && pt2.size >= 2) {
+                            val C = GisGeometryUtils.LatLng(pt1[1], pt1[0])
+                            val D = GisGeometryUtils.LatLng(pt2[1], pt2[0])
+
+                            if (GisGeometryUtils.isSegmentsIntersect(currentLatLng, predictedLatLng, C, D)) {
+                                hasCollisionRisk = true
+                                dangerousWindFarmName = name
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // C. 即時灌入水管（Android Compose 畫面可以直接監聽 collisionAlert）
+        if (hasCollisionRisk) {
+            _collisionAlert.value = "⚠️ 碰撞危機！預計 3 分鐘內將穿越 [${dangerousWindFarmName}] 邊界，請即刻修正航向！"
+        } else {
+            _collisionAlert.value = null
+        }
+        // =========================================================================
+
         return when (mode) {
             NavigationMode.SEA -> {
                 println("🌊 AI 偵測：目前處於海域，啟用大圓直線導航")
-                // 海上導航：直接連成直線，回傳 起點與終點
-                listOf(
-                    Pair(currentLat, currentLng),
-                    Pair(targetLat, targetLng)
-                )
+                listOf(Pair(currentLat, currentLng), Pair(targetLat, targetLng))
             }
             NavigationMode.LAND -> {
                 println("🚗 AI 偵測：目前處於陸地，啟用路網導航架構")
-                // 陸地導航：這裡預留給未來的離線路網演算法
-                // 目前先模擬回傳起點與終點，確保畫面編譯正常
-                listOf(
-                    Pair(currentLat, currentLng),
-                    Pair(targetLat, targetLng)
-                )
+                listOf(Pair(currentLat, currentLng), Pair(targetLat, targetLng))
             }
         }
     }
@@ -278,21 +343,73 @@ class SharedViewModel : ViewModel() {
         targetLng: Double,
         targetName: String
     ): String {
-        // 執行你原本的核心路徑演算法
+        // 1. 執行你原本的核心路徑演算法
         val points = planSmartRoute(currentLat, currentLng, targetLat, targetLng, targetName)
-        // 調試核心防禦：我們先列印出來看，到底這時候 points 裡面有幾個點！
         println("=== 🤖 Kotlin 偵測：當前路徑計算完成，總點數為 = ${points.size} ===")
-        // 修改判定邏輯：
-        // 如果你發現 points.size 在陸地上也可能是 2，我們可以加入距離判定，
-        // 或者如果你原本的 planSmartRoute 裡面就有 mode 變數，請直接用你原本的 mode 變數！
-        // 這裡我們先放寬標準，只要算出來有點位，且目標名稱不是海上特定區域，就先觸發 LAND 測試
+
         if (points.isNotEmpty()) {
-            // 如果你原本是用 points.size > 2 判斷，請進去確認 planSmartRoute 回傳的 List 裡面到底裝了什麼。
-            // 暫時強制修改測試：只要有拿到路徑，就判定為陸地
             _currentMode.value = NavigationMode.LAND
         } else {
             _currentMode.value = NavigationMode.SEA
         }
+
+        // =========================================================================
+        // 🎯 🚀 【核心擴充：智慧地理圍欄防撞預測邏輯】 🚀
+        // =========================================================================
+        val currentLatLng = GisGeometryUtils.LatLng(currentLat, currentLng)
+
+        // A. 預測未來 3 分鐘 (180 秒) 的船隻行進軌跡線段 (當前位置 -> 預測位置)
+        val predictedLatLng = GisGeometryUtils.predictFutureLocation(
+            current = currentLatLng,
+            speedMps = _currentSpeed.value,
+            headingDegrees = _currentHeading.value,
+            durationSeconds = 180.0
+        )
+
+        var hasCollisionRisk = false
+        var dangerousWindFarmName = ""
+
+        // B. 開始遍歷 GeoJSON 風場資料
+        _windFarmData.value?.features?.forEach { feature ->
+            // 🎯 1. 修正對齊：將名稱改為你的資料模型屬性 wpName
+            val name = feature.properties?.wpName ?: "未名風場"
+
+            // 🎯 2. 修正對齊：外海多邊形通常取第一層外環 coordinates[0]
+            val polygonRings = feature.geometry?.coordinates
+            if (polygonRings != null && polygonRings.isNotEmpty()) {
+                val ringPoints = polygonRings[0] // 取得主要邊界的點位列表 (List<List<Double>>)
+
+                if (ringPoints.size > 1) {
+                    // 遍歷多邊形的每一條邊 (C -> D)
+                    for (i in 0 until ringPoints.size - 1) {
+                        val pt1 = ringPoints[i]   // 這是一個 List<Double>
+                        val pt2 = ringPoints[i + 1] // 這是一個 List<Double>
+
+                        // 🎯 3. 修正對齊：標準 GeoJSON 陣列中，[0] 是經度 Lng，[1] 是緯度 Lat
+                        if (pt1.size >= 2 && pt2.size >= 2) {
+                            val C = GisGeometryUtils.LatLng(pt1[1], pt1[0])
+                            val D = GisGeometryUtils.LatLng(pt2[1], pt2[0])
+
+                            // C. 呼叫相交演算法：比對「船隻預測軌跡」與「風場邊界」是否交叉！
+                            if (GisGeometryUtils.isSegmentsIntersect(currentLatLng, predictedLatLng, C, D)) {
+                                hasCollisionRisk = true
+                                dangerousWindFarmName = name
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // D. 根據運算結果，即時把警報灌入水管通知 iOS UI
+        if (hasCollisionRisk) {
+            _collisionAlert.value = "⚠️ 碰撞危機！預計 3 分鐘內將穿越 [${dangerousWindFarmName}] 邊界，請即刻修正航向！"
+        } else {
+            _collisionAlert.value = null // 安全無虞，清空警報
+        }
+        // =========================================================================
+
         // 回傳最純淨的經緯度
         return points.joinToString(separator = ";") { "${it.first},${it.second}" }
     }

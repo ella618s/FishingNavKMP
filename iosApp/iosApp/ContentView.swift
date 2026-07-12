@@ -25,6 +25,17 @@ struct ContentView: View {
             )
             .edgesIgnoringSafeArea(.all)
             
+            // 🎯 防撞警報 UI
+            if let alert = myKmpBridge.collisionAlert { // 假設你把警報加進了 myKmpBridge
+                Text(alert)
+                    .padding()
+                    .background(Color.red.opacity(0.9))
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                    .padding(.top, 100) // 避開頂部安全區域
+                    .transition(.move(edge: .top))
+            }
+            
             // 🎯 把這個浮動標籤文字元件，加在你的畫面上方（例如放進 ZStack 的最上層）
             VStack {
                 Text(aiModeText)

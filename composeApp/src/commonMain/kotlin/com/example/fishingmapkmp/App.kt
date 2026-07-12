@@ -15,9 +15,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.graphics.Color
 
 @Composable
-fun App() {
+fun App(viewModel: SharedViewModel) {// 接收傳入的 viewModel
     var markerList by remember { mutableStateOf(MarkerStorage.loadMarkers()) }
     var selectedMarker by remember { mutableStateOf<CustomMarker?>(null) }
     var showBottomInfo by remember { mutableStateOf(false) }
@@ -25,6 +26,7 @@ fun App() {
     val viewModel = remember { SharedViewModel() }
     val markers by viewModel.markerList.collectAsState()
     val currentMode by viewModel.currentMode.collectAsState()
+    val collisionAlert by viewModel.collisionAlert.collectAsState() // 監聽警報水管
 
     // 使用 remember 監控 selectedMarker，當它變為 null 時，distText 也會消失
     val distText = remember(selectedMarker, userLocation) {
@@ -41,7 +43,7 @@ fun App() {
         }
     }
 
-    // 🎯 新增：更新名稱的邏輯
+    // 🎯 更新名稱的邏輯
     val onUpdateMarkerName: (CustomMarker, String) -> Unit = { marker, newName ->
         val newList = markerList.map {
             if (it.latitude == marker.latitude && it.longitude == marker.longitude) {
@@ -76,7 +78,7 @@ fun App() {
                 selectedMarker = marker
                 showBottomInfo = (marker != null)
             },
-            // 🎯 3. 接收從地圖元件傳回來的經緯度
+            // 🎯接收從地圖元件傳回來的經緯度
             onLocationUpdate = { lat, lon ->
                 userLocation = Pair(lat, lon)
             },
@@ -100,7 +102,17 @@ fun App() {
             }
         )
 
-        // 🎯 修正：底部資訊視窗 (白框)
+        // 顯示警報
+        collisionAlert?.let { alertMessage ->
+            Surface(
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 80.dp),
+                color = Color.Red.copy(alpha = 0.9f)
+            ) {
+                Text(text = alertMessage, color = Color.White, modifier = Modifier.padding(16.dp))
+            }
+        }
+
+        // 🎯 底部資訊視窗 (白框)
         if (selectedMarker != null && showBottomInfo) {
             Card(
                 modifier = Modifier

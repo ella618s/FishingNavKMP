@@ -29,6 +29,11 @@
 * 實現「App 啟動即時偵測」與「座標變更動態觸發」核心機制。
 * 當系統抓取到第一筆 GPS 或位置發生改變時，自動將經緯度送入 KMP `SharedViewModel` 運算，擺脫傳統必須依賴點擊畫線才能觸發的限制。
 * 透過跨平台 `StateFlow` 監聽，讓 UI 層能即時接收狀態推播，在「陸地路網模式 (LAND)」與「海域直線模式 (SEA)」之間進行流暢無縫的動態切換。
+* **智慧地理圍欄防撞 (Geofencing Proximity Alert)**：
+  * **核心邏輯**：基於 KMP 共享層的 `GisGeometryUtils`，實作了「未來航跡預測演算法」。
+  * **運作機制**：透過 `predictFutureLocation` 預測船隻未來 3 分鐘內的移動向量，並與風場 GeoJSON 邊界進行線段交叉檢測 (Intersection Detection)。
+  * **跨平台同步**：Android 端透過 `MainActivity` 的 `LocationListener` 即時餵入航速與航向；iOS 端則透過 `CLLocationManager` 同步至 `SharedViewModel`。
+  * **主動告警**：一旦判定航線將穿越風場，透過 `StateFlow` 即時觸發 UI 紅色警報，有效提升夜間與霧天的航海安全。
 
 ## 📱 互動式 GIS 成果展示
 * **動態標籤渲染**：解析政府 Open Data 之風場區域 (GeoJSON)，實作半透明多邊形與標籤化渲染。
@@ -41,7 +46,7 @@
 | ![Android Screen](./screenshots/android_demo.png) | ![iOS Screen](./screenshots/ios_demo.png) |
 
 ### KMP 跨平台架構
-![KMP Architecture](./screenshots/kmp_arch.png)
+![KMP Architecture](./screenshots/kmp_structure.png)
 
 ## 🏗️ 目前開發狀態
 - [x] 跨平台 KMP 專案基礎環境架構與 Ktor 2.3.12 整合

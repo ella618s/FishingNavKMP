@@ -13,6 +13,7 @@ class MapViewModel: NSObject, ObservableObject, CLLocationManagerDelegate { // �
     // 儲存是否正在轉圈圈
     @Published var isLoading: Bool = false
     let sharedVM = SharedViewModel()
+    @Published var collisionAlert: String? = nil
     
     // 🎯 建立純 Swift 的定位管理器
     private let locationManager = CLLocationManager()
@@ -24,6 +25,11 @@ class MapViewModel: NSObject, ObservableObject, CLLocationManagerDelegate { // �
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.requestWhenInUseAuthorization()
         locationManager.startUpdatingLocation() // 🚀 啟動！當 App 打開或移動時，會自動瘋狂觸發下面的更新函式
+        func checkCollisionAlert() {
+            // 假設你 KMP 的 collisionAlert 是透過某種方式暴露
+            // 如果你 KMP 直接有一個 getter，直接賦值即可
+            // 例如: self.collisionAlert = sharedVM.collisionAlert.value
+        }
     }
     
     func fetchWindFarms() async {
@@ -45,6 +51,21 @@ class MapViewModel: NSObject, ObservableObject, CLLocationManagerDelegate { // �
         let lat = location.coordinate.latitude
         let lng = location.coordinate.longitude
         self.currentCoordinate = location.coordinate
+        
+        // 🎯 餵資料給 KMP 的核心大腦
+        sharedVM.updateShipStatus(
+            speedMps: location.speed < 0 ? 0 : location.speed, // iOS 速度若未知會是 -1
+            headingDegrees: location.course
+        )
+        
+        // 🎯 觸發智慧防撞計算
+        _ = sharedVM.planSmartRouteForIOS(
+            currentLat: location.coordinate.latitude,
+            currentLng: location.coordinate.longitude,
+            targetLat: location.coordinate.latitude,
+            targetLng: location.coordinate.longitude,
+            targetName: "iOS 即時監測"
+        )
         
         // 🚀 只要位置一改變（或剛打開抓到第一筆定位），立刻自我觸發 planSmartRoute！
         // 在尚未點擊任何目標前，目的地 targetLat/targetLng 可以先帶當前位置來進行當下環境辨識
