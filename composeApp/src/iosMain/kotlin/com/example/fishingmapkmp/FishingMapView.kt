@@ -25,6 +25,7 @@ actual fun FishingMapView(
     onLocationUpdate: (Double, Double) -> Unit, // 🎯 用來傳回目前 GPS 座標
     onRenameClick: (CustomMarker, String) -> Unit, // 🎯 新增參數
     onClearAllClick: () -> Unit,
+    anomalyStatus: String,// 🎯 【精確新增這行參數，預設為正常航行】
     planRoute: (Double, Double, Double, Double, String) -> List<Pair<Double, Double>> // 🎯 傳入 KMP 智慧路徑規劃方法
 ) {
     val mapView = remember {

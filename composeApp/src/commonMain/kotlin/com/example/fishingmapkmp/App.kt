@@ -23,10 +23,10 @@ fun App(viewModel: SharedViewModel) {// 接收傳入的 viewModel
     var selectedMarker by remember { mutableStateOf<CustomMarker?>(null) }
     var showBottomInfo by remember { mutableStateOf(false) }
     var userLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
-    val viewModel = remember { SharedViewModel() }
     val markers by viewModel.markerList.collectAsState()
     val currentMode by viewModel.currentMode.collectAsState()
     val collisionAlert by viewModel.collisionAlert.collectAsState() // 監聽警報水管
+    val anomalyStatus by viewModel.anomalyStatus.collectAsState() // 🎯 【精確新增這行：監聽 AI 異常狀態水管】
 
     // 使用 remember 監控 selectedMarker，當它變為 null 時，distText 也會消失
     val distText = remember(selectedMarker, userLocation) {
@@ -92,12 +92,15 @@ fun App(viewModel: SharedViewModel) {// 接收傳入的 viewModel
                 selectedMarker = null
                 showBottomInfo = false
             },
-            // 🎯 補上第一個新參數：傳入從 ViewModel 收到的目前模式
+            // 🎯 傳入從 ViewModel 收到的目前模式
             currentMode = currentMode,
 
-            // 🎯 補上第二個新參數：實作 AI 智慧路徑規劃的銜接
+            // 🎯 傳入 AI 異常狀態
+            anomalyStatus = anomalyStatus,
+
+            // 🎯實作 AI 智慧路徑規劃的銜接
             planRoute = { myLat, myLng, targetLat, targetLng, targetName ->
-                // 🎯 直接把 5 個基礎參數傳給 ViewModel，把舊的 val spot = FishingSpot(...) 刪掉！
+                // 🎯 直接把 5 個基礎參數傳給 ViewModel
                 viewModel.planSmartRoute(myLat, myLng, targetLat, targetLng, targetName)
             }
         )

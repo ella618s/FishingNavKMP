@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.background
 
 @Composable
 actual fun FishingMapView(
@@ -38,6 +39,7 @@ actual fun FishingMapView(
     onLocationUpdate: (Double, Double) -> Unit, // 🎯 用來傳回目前 GPS 座標
     onRenameClick: (CustomMarker, String) -> Unit, // 🎯 新增參數
     onClearAllClick: () -> Unit,
+    anomalyStatus: String, // 🎯 【精確新增這行參數，預設為正常航行】
     planRoute: (Double, Double, Double, Double, String) -> List<Pair<Double, Double>> // 🎯 傳入 KMP 智慧路徑規劃方法
 ) {
     val context = LocalContext.current
@@ -119,7 +121,10 @@ actual fun FishingMapView(
                         setShadowLayer(8f, 0f, 0f, android.graphics.Color.BLACK)
                     }
                     val path = Path().apply {
-                        moveTo(30f, 5f); lineTo(50f, 55f); lineTo(30f, 45f); lineTo(10f, 55f); close()
+                        moveTo(30f, 5f); lineTo(50f, 55f); lineTo(30f, 45f); lineTo(
+                        10f,
+                        55f
+                    ); close()
                     }
                     canvas.drawPath(path, p)
                     overlay.setDirectionArrow(bit, bit)
@@ -139,9 +144,13 @@ actual fun FishingMapView(
                     // 🎯 3. 地圖點擊監聽
                     val mapEventsReceiver = object : org.osmdroid.events.MapEventsReceiver {
                         override fun singleTapConfirmedHelper(p: GeoPoint?): Boolean {
-                            p?.let { tempLocation = it; markerNameInput = "新釣點"; showMarkerDialog = true }
+                            p?.let {
+                                tempLocation = it; markerNameInput = "新釣點"; showMarkerDialog =
+                                true
+                            }
                             return true
                         }
+
                         override fun longPressHelper(p: GeoPoint?): Boolean = false
                     }
                     overlays.add(org.osmdroid.views.overlay.MapEventsOverlay(mapEventsReceiver))
@@ -153,14 +162,24 @@ actual fun FishingMapView(
                 mapReference = mapView
                 // 🎯 4. 衛星/一般模式切換
                 if (isSatelliteMode) {
-                    mapView.setTileSource(object : org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase(
-                        "Google-Satellite", 0, 20, 256, ".jpg",
-                        arrayOf("https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}")
-                    ) {
+                    mapView.setTileSource(object :
+                        org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase(
+                            "Google-Satellite", 0, 20, 256, ".jpg",
+                            arrayOf("https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}")
+                        ) {
                         override fun getTileURLString(pTileIndex: Long): String = baseUrl
-                            .replace("{x}", org.osmdroid.util.MapTileIndex.getX(pTileIndex).toString())
-                            .replace("{y}", org.osmdroid.util.MapTileIndex.getY(pTileIndex).toString())
-                            .replace("{z}", org.osmdroid.util.MapTileIndex.getZoom(pTileIndex).toString())
+                            .replace(
+                                "{x}",
+                                org.osmdroid.util.MapTileIndex.getX(pTileIndex).toString()
+                            )
+                            .replace(
+                                "{y}",
+                                org.osmdroid.util.MapTileIndex.getY(pTileIndex).toString()
+                            )
+                            .replace(
+                                "{z}",
+                                org.osmdroid.util.MapTileIndex.getZoom(pTileIndex).toString()
+                            )
                     })
                 } else {
                     mapView.setTileSource(TileSourceFactory.MAPNIK)
@@ -184,7 +203,8 @@ actual fun FishingMapView(
                         }
 
                         osmdroidPolygon.points = points
-                        osmdroidPolygon.fillPaint.color = android.graphics.Color.parseColor("#406200EE") // 半透明紫
+                        osmdroidPolygon.fillPaint.color =
+                            android.graphics.Color.parseColor("#406200EE") // 半透明紫
                         osmdroidPolygon.strokeColor = android.graphics.Color.parseColor("#FF6200EE")
                         osmdroidPolygon.strokeWidth = 3f
                         osmdroidPolygon.title = feature.properties.wpName ?: "未知風場"
@@ -203,7 +223,8 @@ actual fun FishingMapView(
                         setOnMarkerClickListener { marker, _ ->
                             // 🎯 核心修正 2：判斷邏輯
                             if (selectedMarker?.latitude == data.latitude &&
-                                selectedMarker?.longitude == data.longitude) {
+                                selectedMarker?.longitude == data.longitude
+                            ) {
                                 onMarkerClick(data)
                                 markerToRename = data
                                 newNameInput = data.name
@@ -258,7 +279,9 @@ actual fun FishingMapView(
                     results
                 )
                 val distanceKm = results[0] / 1000
-                val distText = if (distanceKm < 1) "${(distanceKm * 1000).toInt()} m" else "${"%.2f".format(distanceKm)} km"
+                val distText = if (distanceKm < 1) "${(distanceKm * 1000).toInt()} m" else "${
+                    "%.2f".format(distanceKm)
+                } km"
 
                 Surface(
                     modifier = Modifier
@@ -281,7 +304,9 @@ actual fun FishingMapView(
                     modifier = Modifier
                         .padding(top = 24.dp)
                         .align(Alignment.TopCenter),
-                    color = if (currentMode == NavigationMode.LAND) Color(0xFFE65100).copy(alpha = 0.85f) else Color(0xFF0D47A1).copy(alpha = 0.85f), // 陸地橘色，海上藍色
+                    color = if (currentMode == NavigationMode.LAND) Color(0xFFE65100).copy(alpha = 0.85f) else Color(
+                        0xFF0D47A1
+                    ).copy(alpha = 0.85f), // 陸地橘色，海上藍色
                     shape = RoundedCornerShape(20.dp),
                     shadowElevation = 6.dp
                 ) {
@@ -302,9 +327,40 @@ actual fun FishingMapView(
 
         // 🎯 6. 右上角按鈕組 (紫色圓角)
         Column(
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 16.dp),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 64.dp, end = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // 🎯 AI 狀態燈號，放在按鈕群的最上方！
+            val isWarning = anomalyStatus.contains("⚠️")
+            Column(
+                modifier = Modifier // 🎯 這裡直接用 Modifier 即可，把原本的 .someModifier 刪掉
+                    .width(105.dp)
+                    .background(
+                        color = if (isWarning) Color.Red.copy(alpha = 0.2f) else Color.White.copy(
+                            alpha = 0.9f
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = "🤖 AI航行狀態",
+                    color = Color.Gray,
+                    fontSize = 10.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                )
+                Text(
+                    text = if (anomalyStatus.isBlank()) "正常航行" else if (isWarning) "⚠️異常" else "正常航行",
+                    color = if (isWarning) Color.Red else Color(0xFF4CAF50),
+                    fontSize = 12.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+            }
+
             // 衛星模式文字隨狀態切換
             MapButton(if (isSatelliteMode) "一般模式" else "衛星模式", Color(0xFF6200EE)) {
                 isSatelliteMode = !isSatelliteMode
@@ -339,7 +395,7 @@ actual fun FishingMapView(
                                 val currentZoom = map.zoomLevelDouble.toInt()
                                 val boundingBox = map.boundingBox
 
-                                // 🎯 修正閃退：必須在 Main 執行緒發起，osmdroid 內部才能正確建立 Dialog 實體
+                                // 🎯 必須在 Main 執行緒發起，osmdroid 內部才能正確建立 Dialog 實體
                                 scope.launch(Dispatchers.Main) {
                                     cache.downloadAreaAsync(
                                         context,
@@ -351,21 +407,36 @@ actual fun FishingMapView(
                                             override fun setPossibleTilesInArea(total: Int) {}
 
                                             override fun onTaskComplete() {
-                                                Toast.makeText(context, "下載完成", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(
+                                                    context,
+                                                    "下載完成",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
                                             }
 
                                             override fun onTaskFailed(errors: Int) {
-                                                Toast.makeText(context, "下載失敗", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(
+                                                    context,
+                                                    "下載失敗",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
                                             }
 
                                             // 補齊 4 個參數版本的 updateProgress
-                                            override fun updateProgress(p: Int, c: Int, z: Int, zoomMax: Int) {}
+                                            override fun updateProgress(
+                                                p: Int,
+                                                c: Int,
+                                                z: Int,
+                                                zoomMax: Int
+                                            ) {
+                                            }
 
                                             override fun downloadStarted() {}
                                         }
                                     )
                                 }
-                                Toast.makeText(context, "開始背景預載...", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "開始背景預載...", Toast.LENGTH_SHORT)
+                                    .show()
                             } catch (e: Exception) {
                                 map.invalidate()
                             }
@@ -386,7 +457,7 @@ actual fun FishingMapView(
             }
         }
 
-        // --- 🎯 7. 補回：新增點位的彈跳視窗 (AlertDialog) ---
+        // --- 🎯 7.新增點位的彈跳視窗 (AlertDialog) ---
         if (showMarkerDialog && tempLocation != null) {
             AlertDialog(
                 onDismissRequest = { showMarkerDialog = false },
@@ -400,7 +471,11 @@ actual fun FishingMapView(
                 },
                 confirmButton = {
                     TextButton(onClick = {
-                        onMapClick(tempLocation!!.latitude, tempLocation!!.longitude, markerNameInput)
+                        onMapClick(
+                            tempLocation!!.latitude,
+                            tempLocation!!.longitude,
+                            markerNameInput
+                        )
                         showMarkerDialog = false
                         markerNameInput = "新釣點"
                     }) { Text("確定") }

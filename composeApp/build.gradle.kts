@@ -59,6 +59,7 @@ kotlin {
             implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
             implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
             implementation("com.russhwolf:multiplatform-settings-no-arg:1.1.1")
+            implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.0") // 確保引入跨平台時間庫
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

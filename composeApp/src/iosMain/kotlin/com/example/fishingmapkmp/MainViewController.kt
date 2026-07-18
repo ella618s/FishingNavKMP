@@ -6,5 +6,5 @@ import androidx.compose.ui.window.ComposeUIViewController
 fun MainViewController() = ComposeUIViewController(
     // ... 裡面的代碼
 ) {
-    App(SharedViewModel())
+    App(SharedViewModel(AnomalyDetector()))
 }

@@ -30,13 +30,17 @@ enum class NavigationMode {
     SEA     // 海上模式
 }
 
-class SharedViewModel : ViewModel() {
+// 🎯 修改建構子：注入 AnomalyDetector 偵測器
+class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
     // 初始化 Settings 與 Json 處理器
     private val settings: Settings = Settings()
     private val json = Json { ignoreUnknownKeys = true }
     private val STORAGE_KEY = "saved_fishing_spots"
     private val _windFarmData = MutableStateFlow<WindFarmGeoJson?>(null)
     val windFarmData: StateFlow<WindFarmGeoJson?> = _windFarmData
+
+    // 🎯 初始化 AI 需要的滑動視窗緩衝器（每2秒一筆，15筆約30秒）
+    private val windowBuffer = SlidingWindowBuffer()
 
     // 初始化時直接從儲存空間讀取舊資料
     private val _markerList = MutableStateFlow<List<FishingSpot>>(loadSavedSpots())
@@ -54,6 +58,10 @@ class SharedViewModel : ViewModel() {
     private val _collisionAlert = MutableStateFlow<String?>(null)
     val collisionAlert: StateFlow<String?> = _collisionAlert.asStateFlow()
 
+    // 🎯 新增 AI 航行異常狀態水管
+    private val _anomalyStatus = MutableStateFlow<String>("正常航行")
+    val anomalyStatus: StateFlow<String> = _anomalyStatus.asStateFlow()
+
     // 🎯 提供給 iOS 監聽警報的水管橋樑
     fun watchCollisionAlert(onUpdate: (String?) -> Unit) {
         viewModelScope.launch {
@@ -63,12 +71,54 @@ class SharedViewModel : ViewModel() {
         }
     }
 
+    // 🎯  提供給 iOS 監聽 AI 異常狀態的水管接頭
+    fun watchAnomalyStatus(onUpdate: (String) -> Unit) {
+        anomalyStatus.onEach { status ->
+            onUpdate(status)
+        }.launchIn(viewModelScope)
+    }
+
     /**
      * 提供外部（iOS/Android）主動更新航速與航向的市場介面
      */
-    fun updateShipStatus(speedMps: Double, headingDegrees: Double) {
+    fun updateShipStatus(speedMps: Double, headingDegrees: Double, lat: Double = 0.0, lng: Double = 0.0) {
         _currentSpeed.value = speedMps
         _currentHeading.value = headingDegrees
+
+        // 🎯 每次定位更新時，同步塞入 AI 滑動視窗進行時序檢測
+        val snapshot = NavSnapshot(
+            timestamp = kotlinx.datetime.Clock.System.now().toEpochMilliseconds(),
+            speedKnots = speedMps * 1.94384, // 將 m/s 轉換為航海常用的節 (Knots)
+            courseDegrees = headingDegrees,
+            latitude = lat,
+            longitude = lng
+        )
+
+        val windowData = windowBuffer.addSample(snapshot)
+
+        // 當集滿 30 秒數據，立刻啟動 On-Device AI 離線推理
+        if (windowData != null) {
+            val features = prepareFeatures(windowData)
+            val anomalyScore = detector.detectAnomaly(features)
+
+            if (anomalyScore > 0.85f) {
+                _anomalyStatus.value = "⚠️ 偵測到航行動態異常（可能遭逢異常洋流、螺旋槳纏繞或失控）"
+            } else {
+                _anomalyStatus.value = "正常航行"
+            }
+        }
+    }
+
+    /**
+     * 🎯 新增 AI 特徵工程：將 15 筆時序快照轉換為模型輸入的特徵向量
+     */
+    private fun prepareFeatures(snapshots: List<NavSnapshot>): FloatArray {
+        val features = FloatArray(30)
+        for (i in snapshots.indices) {
+            features[i * 2] = snapshots[i].speedKnots.toFloat()
+            features[i * 2 + 1] = snapshots[i].courseDegrees.toFloat()
+        }
+        return features
     }
 
     @Throws(Exception::class)
@@ -132,11 +182,11 @@ class SharedViewModel : ViewModel() {
     }
 
     fun clearAllSpots() {
-        // 1. 清空記憶體列表 (這會讓兩端的畫面大頭針立刻消失)
+        // 清空記憶體列表 (這會讓兩端的畫面大頭針立刻消失)
         _markerList.value = emptyList()
-        // 2. 針對 iOS 的存檔邏輯
+        // 針對 iOS 的存檔邏輯
         saveAllSpotsToSettings(emptyList())
-        // ✅ 3. 針對 Android 的存檔邏輯 (使用 MarkerStorage)
+        // ✅ 針對 Android 的存檔邏輯 (使用 MarkerStorage)
         MarkerStorage.saveMarkers(emptyList())
         println("🗑️ 已清空兩端的所有點位與持久化資料")
     }
@@ -271,7 +321,7 @@ class SharedViewModel : ViewModel() {
         // =========================================================================
         val currentLatLng = GisGeometryUtils.LatLng(currentLat, currentLng)
 
-        // A. 預測未來 3 分鐘 (180 秒) 的船隻行進軌跡線段
+        // 預測未來 3 分鐘 (180 秒) 的船隻行進軌跡線段
         val predictedLatLng = GisGeometryUtils.predictFutureLocation(
             current = currentLatLng,
             speedMps = _currentSpeed.value,
@@ -282,7 +332,7 @@ class SharedViewModel : ViewModel() {
         var hasCollisionRisk = false
         var dangerousWindFarmName = ""
 
-        // B. 遍歷風場多邊形邊界
+        // 遍歷風場多邊形邊界
         _windFarmData.value?.features?.forEach { feature ->
             val name = feature.properties?.wpName ?: "未名風場"
             val polygonRings = feature.geometry?.coordinates
@@ -309,7 +359,7 @@ class SharedViewModel : ViewModel() {
             }
         }
 
-        // C. 即時灌入水管（Android Compose 畫面可以直接監聽 collisionAlert）
+        // 即時灌入水管（Android Compose 畫面可以直接監聽 collisionAlert）
         if (hasCollisionRisk) {
             _collisionAlert.value = "⚠️ 碰撞危機！預計 3 分鐘內將穿越 [${dangerousWindFarmName}] 邊界，請即刻修正航向！"
         } else {
@@ -332,7 +382,7 @@ class SharedViewModel : ViewModel() {
     // 🎯 【關鍵：原生 iOS 水管接頭】
     fun watchCurrentMode(onUpdate: (String) -> Unit) {
         currentMode.onEach { mode ->
-            onUpdate(mode.toString()) // 👈 改成這樣
+            onUpdate(mode.toString())
         }.launchIn(viewModelScope)
     }
 
@@ -343,7 +393,7 @@ class SharedViewModel : ViewModel() {
         targetLng: Double,
         targetName: String
     ): String {
-        // 1. 執行你原本的核心路徑演算法
+        // 執行原本的核心路徑演算法
         val points = planSmartRoute(currentLat, currentLng, targetLat, targetLng, targetName)
         println("=== 🤖 Kotlin 偵測：當前路徑計算完成，總點數為 = ${points.size} ===")
 
@@ -358,7 +408,7 @@ class SharedViewModel : ViewModel() {
         // =========================================================================
         val currentLatLng = GisGeometryUtils.LatLng(currentLat, currentLng)
 
-        // A. 預測未來 3 分鐘 (180 秒) 的船隻行進軌跡線段 (當前位置 -> 預測位置)
+        // 預測未來 3 分鐘 (180 秒) 的船隻行進軌跡線段 (當前位置 -> 預測位置)
         val predictedLatLng = GisGeometryUtils.predictFutureLocation(
             current = currentLatLng,
             speedMps = _currentSpeed.value,
@@ -369,28 +419,23 @@ class SharedViewModel : ViewModel() {
         var hasCollisionRisk = false
         var dangerousWindFarmName = ""
 
-        // B. 開始遍歷 GeoJSON 風場資料
+        // 開始遍歷 GeoJSON 風場資料
         _windFarmData.value?.features?.forEach { feature ->
-            // 🎯 1. 修正對齊：將名稱改為你的資料模型屬性 wpName
             val name = feature.properties?.wpName ?: "未名風場"
 
-            // 🎯 2. 修正對齊：外海多邊形通常取第一層外環 coordinates[0]
             val polygonRings = feature.geometry?.coordinates
             if (polygonRings != null && polygonRings.isNotEmpty()) {
-                val ringPoints = polygonRings[0] // 取得主要邊界的點位列表 (List<List<Double>>)
+                val ringPoints = polygonRings[0]
 
                 if (ringPoints.size > 1) {
-                    // 遍歷多邊形的每一條邊 (C -> D)
                     for (i in 0 until ringPoints.size - 1) {
-                        val pt1 = ringPoints[i]   // 這是一個 List<Double>
-                        val pt2 = ringPoints[i + 1] // 這是一個 List<Double>
+                        val pt1 = ringPoints[i]
+                        val pt2 = ringPoints[i + 1]
 
-                        // 🎯 3. 修正對齊：標準 GeoJSON 陣列中，[0] 是經度 Lng，[1] 是緯度 Lat
                         if (pt1.size >= 2 && pt2.size >= 2) {
                             val C = GisGeometryUtils.LatLng(pt1[1], pt1[0])
                             val D = GisGeometryUtils.LatLng(pt2[1], pt2[0])
 
-                            // C. 呼叫相交演算法：比對「船隻預測軌跡」與「風場邊界」是否交叉！
                             if (GisGeometryUtils.isSegmentsIntersect(currentLatLng, predictedLatLng, C, D)) {
                                 hasCollisionRisk = true
                                 dangerousWindFarmName = name
@@ -402,11 +447,11 @@ class SharedViewModel : ViewModel() {
             }
         }
 
-        // D. 根據運算結果，即時把警報灌入水管通知 iOS UI
+        // 根據運算結果，即時把警報灌入水管通知 iOS UI
         if (hasCollisionRisk) {
             _collisionAlert.value = "⚠️ 碰撞危機！預計 3 分鐘內將穿越 [${dangerousWindFarmName}] 邊界，請即刻修正航向！"
         } else {
-            _collisionAlert.value = null // 安全無虞，清空警報
+            _collisionAlert.value = null
         }
         // =========================================================================
 

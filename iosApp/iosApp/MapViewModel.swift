@@ -12,19 +12,40 @@ class MapViewModel: NSObject, ObservableObject, CLLocationManagerDelegate { // �
     
     // 儲存是否正在轉圈圈
     @Published var isLoading: Bool = false
-    let sharedVM = SharedViewModel()
+    // 🎯 先建立 detector，再注入進 sharedVM
+    let detector: AnomalyDetector
+    let sharedVM: SharedViewModel
     @Published var collisionAlert: String? = nil
+    // 🎯 用來即時刷新 iOS UI 畫面的 AI 偵測狀態文字
+    @Published var anomalyStatusText: String = "正常航行"
     
     // 🎯 建立純 Swift 的定位管理器
     private let locationManager = CLLocationManager()
     
     override init() {
+        // 🎯 在 super.init() 之前初始化 KMP 類別
+        self.detector = AnomalyDetector()
+        self.sharedVM = SharedViewModel(detector: self.detector)
+        
         super.init()
         // 🎯 初始化時立刻要求權限並啟動 GPS 監聽
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.requestWhenInUseAuthorization()
         locationManager.startUpdatingLocation() // 🚀 啟動！當 App 打開或移動時，會自動瘋狂觸發下面的更新函式
+        
+        // 🎯 實作 Swift 閉包傳給 Kotlin 的 expect/actual 機制
+        self.detector.setupNativePredictor { (inputData: KotlinFloatArray) -> KotlinFloat in
+            let mockScore: Float = 0.1
+            return KotlinFloat(value: mockScore) // ✅ 使用 KotlinFloat 包裝回傳
+        }
+        
+        // 🎯 監聽 Kotlin 的 AI 異常狀態水管，即時同步到 SwiftUI
+        self.sharedVM.watchAnomalyStatus { [weak self] (status: String) in
+            guard let self = self else { return }
+            self.anomalyStatusText = status
+        }
+        
         func checkCollisionAlert() {
             // 假設你 KMP 的 collisionAlert 是透過某種方式暴露
             // 如果你 KMP 直接有一個 getter，直接賦值即可
@@ -44,7 +65,7 @@ class MapViewModel: NSObject, ObservableObject, CLLocationManagerDelegate { // �
         isLoading = false
     }
     
-    // 🎯【核心關鍵】：App 一打開取得定位、或是座標改變時，iOS 系統會自動執行這個函式！
+    // 🚀 當使用者移動、GPS 更新時自動觸發
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         
@@ -52,10 +73,12 @@ class MapViewModel: NSObject, ObservableObject, CLLocationManagerDelegate { // �
         let lng = location.coordinate.longitude
         self.currentCoordinate = location.coordinate
         
-        // 🎯 餵資料給 KMP 的核心大腦
-        sharedVM.updateShipStatus(
-            speedMps: location.speed < 0 ? 0 : location.speed, // iOS 速度若未知會是 -1
-            headingDegrees: location.course
+        // 🎯 對齊在 SharedViewModel 擴充的 4 個參數，將定位一併丟給 AI 緩衝器
+        self.sharedVM.updateShipStatus(
+            speedMps: location.speed,
+            headingDegrees: location.course,
+            lat: lat,
+            lng: lng
         )
         
         // 🎯 觸發智慧防撞計算

@@ -15,7 +15,8 @@ import android.location.LocationManager
 @SuppressLint("MissingPermission")
 class MainActivity : ComponentActivity() {
     // 在 MainActivity 定義 ViewModel，確保它是單一來源
-    private val viewModel = SharedViewModel()
+    private val detector = AnomalyDetector()
+    private val viewModel = SharedViewModel(detector)
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -42,6 +43,7 @@ class MainActivity : ComponentActivity() {
 @Preview
 @Composable
 fun AppAndroidPreview() {
-    // 預覽時傳入一個測試用的 ViewModel
-    App(SharedViewModel())
+    // 🎯 預覽時，同樣例項化一個偵測器注入進去
+    val testDetector = AnomalyDetector()
+    App(SharedViewModel(testDetector))
 }

@@ -34,6 +34,9 @@
   * **運作機制**：透過 `predictFutureLocation` 預測船隻未來 3 分鐘內的移動向量，並與風場 GeoJSON 邊界進行線段交叉檢測 (Intersection Detection)。
   * **跨平台同步**：Android 端透過 `MainActivity` 的 `LocationListener` 即時餵入航速與航向；iOS 端則透過 `CLLocationManager` 同步至 `SharedViewModel`。
   * **主動告警**：一旦判定航線將穿越風場，透過 `StateFlow` 即時觸發 UI 紅色警報，有效提升夜間與霧天的航海安全。
+* **AI 航行異常與碰撞偵測機制 (AI Navigation Anomaly & Collision Detection)**：
+  * **雙端同步面板**：在 KMP 共享層利用 `SharedViewModel` 維持單一異常狀態水管（`anomalyStatus`），Android 端以 Jetpack Compose 右側按鈕群頂層的膠囊字卡呈現，iOS 端以 SwiftUI 懸浮字卡對齊，實現雙端即時聯動。
+  * **動態視覺回饋**：當底層機器學習模型預測分數過高或觸發警告（狀態含 `⚠️`）時，雙端 UI 自動同步切換為微透紅底紅字提示，提供即時、直覺的視覺告警。
 
 ## 📱 互動式 GIS 成果展示
 * **動態標籤渲染**：解析政府 Open Data 之風場區域 (GeoJSON)，實作半透明多邊形與標籤化渲染。
@@ -59,6 +62,7 @@
 - [x] iOS 端 Apple Maps 整合與實時定位數據對接
 - [x] **iOS 端離線下載 UI (ProgressView) 與邏輯對接**
 - [x] **自動 GPS 定位智慧路網辨識與即時模式動態切換 (LAND/SEA)**
+- [x] **AI 航行異常偵測狀態水管與 Android/iOS 雙端 UI 燈號即時連動**
 
 ## 📄 授權與聲明 (License & Disclaimer)
 * **版權所有**：© 2026 Ella Liu. All rights reserved.

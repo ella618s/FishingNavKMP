@@ -6,11 +6,17 @@ struct ContentView: View {
     @State private var isNavigating = false
     @State private var selectedMapType: MKMapType = .standard
     @State private var isFollowMode = false
-    @StateObject private var viewModel = IOSMapViewModel()
+    @StateObject private var viewModel: IOSMapViewModel
     @StateObject var myKmpBridge = MapViewModel() // 🎯 建立你專屬新寫的 MapViewModel，用來做為 KMP 狀態監聽的橋樑
     @State private var showOfflineAlert = false
     @State private var mapView: MKMapView? = nil
     @State private var aiModeText: String = "🌊 AI 辨識：海域直線模式"  // 🎯 宣告一個用來即時刷新 UI 的變數，預設為海域模式
+    
+    init() {
+        let bridge = MapViewModel()
+        self._myKmpBridge = StateObject(wrappedValue: bridge)
+        self._viewModel = StateObject(wrappedValue: IOSMapViewModel(sharedVM: bridge.sharedVM))
+    }
     
     var body: some View {
         ZStack {
@@ -97,6 +103,25 @@ struct ContentView: View {
             HStack {
                 Spacer()
                 VStack(spacing: 15) {
+                    // 🎯 AI 航行異常偵測的浮動燈號面板
+                    VStack(spacing: 4) {
+                        Text("🤖 AI 航行狀態")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.gray)
+                        
+                        Text(myKmpBridge.anomalyStatusText)
+                            .font(.system(size: 13, weight: .bold))
+                        // 如果包含警告符號，字體變紅色，平常正常航行顯示綠色
+                            .foregroundColor(myKmpBridge.anomalyStatusText.contains("⚠️") ? .red : .green)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    // 當有警告時，背景微微變紅；平常則是高質感的白底半透明
+                    .background(myKmpBridge.anomalyStatusText.contains("⚠️") ? Color.red.opacity(0.15) : Color.white.opacity(0.9))
+                    .cornerRadius(8)
+                    .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
+                    .padding(.bottom, 5)
+                    
                     MapControlButton(title: selectedMapType == .standard ? "衛星模式" : "一般模式") {
                         selectedMapType = (selectedMapType == .standard) ? .hybrid : .standard
                     }
@@ -260,7 +285,7 @@ class IOSMapViewModel: ObservableObject {
     @Published var newSpotName: String = ""// 綁定輸入框的文字
     @Published var downloadProgress: Float = 0.0
     // 這是來自 Kotlin 的 SharedViewModel
-    let sharedVM = SharedViewModel()
+    let sharedVM: SharedViewModel
     // 顯示 Alert 的狀態
     @Published var showAlert = false
     @Published var lastClickedLocation: String = ""
@@ -272,8 +297,9 @@ class IOSMapViewModel: ObservableObject {
     @Published var editingMarker: MKPointAnnotation? = nil // 紀錄正在改哪一個
     @Published var tempEditingName: String = ""
     
-    init() {
+    init(sharedVM: SharedViewModel) {
         // 先抓取 Kotlin 裡的原始資料
+        self.sharedVM = sharedVM
         let spots = sharedVM.markerList.value
         
         // 明確指定為 [FishingSpot] 列表進行轉換

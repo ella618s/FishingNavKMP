@@ -34,6 +34,9 @@ We successfully resolved critical challenges regarding OSMDroid stability in Com
   * **Mechanism**: Uses `predictFutureLocation` to calculate the vessel's movement vector over the next 3 minutes, performing line-segment intersection detection against offshore wind farm boundaries.
   * **Cross-Platform Synchronization**: Android utilizes `MainActivity`'s `LocationListener` to feed speed and heading data; iOS leverages `CLLocationManager` to sync with the `SharedViewModel`.
   * **Active Alerting**: Automatically triggers real-time UI alerts via `StateFlow` when a collision trajectory is detected, significantly enhancing safety during night or foggy conditions.
+* **AI Navigation Anomaly & Collision Detection Mechanism**:
+  * **Cross-Platform Unified Dashboard**: Utilizes `SharedViewModel` in the KMP shared layer to maintain a single source of truth for the anomaly status flow (`anomalyStatus`). The state is seamlessly rendered on Android using a Jetpack Compose capsule card atop the right-side button group, and matched symmetrically on iOS via SwiftUI.
+  * **Dynamic Visual Feedback**: When the underlying ML model score spikes or triggers an alert (status contains `⚠️`), both platform UIs instantly and dynamically pivot to a semi-transparent red background with bold red typography for real-time, intuitive cognitive alerting.
 
 ## 📱 Interactive GIS Showcase
 * **Dynamic Label Rendering**: Parses government Open Data for wind farm areas (GeoJSON), implementing semi-transparent polygon and label rendering.
@@ -59,6 +62,7 @@ We successfully resolved critical challenges regarding OSMDroid stability in Com
 - [x] iOS Apple Maps integration & real-time location streaming
 - [x] iOS offline download UI (ProgressView) & logic binding
 - [x] Automatic GPS Smart Route Detection & dynamic mode switching (LAND/SEA)
+- [x] **AI Navigation Anomaly Detection status flow & real-time Android/iOS dual-platform UI indicator binding**
 
 ## 📄 License & Disclaimer
 * **Copyright**: © 2026 Ella Liu. All rights reserved.
