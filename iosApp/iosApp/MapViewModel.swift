@@ -134,4 +134,17 @@ class MapViewModel: NSObject, ObservableObject, CLLocationManagerDelegate { // �
         
         return coordinates
     }
+    
+    // 🎯 補上模擬遭遇暴流的方法
+    func simulateAnomaly(lat: Double, lng: Double) {
+        // 這裡確保呼叫的是 Kotlin SharedViewModel 的模擬方法
+        self.sharedVM.simulateAnomaly(lat: lat, lng: lng)
+    }
+    
+    // 🎯 補上恢復正常的方法
+    func resetAnomaly(lat: Double, lng: Double) {
+        // 這裡確保呼叫的是 Kotlin SharedViewModel 的恢復方法
+        self.sharedVM.resetAnomaly(lat: lat, lng: lng)
+    }
+    
 }

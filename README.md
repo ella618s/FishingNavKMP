@@ -37,6 +37,7 @@
 * **AI 航行異常與碰撞偵測機制 (AI Navigation Anomaly & Collision Detection)**：
   * **雙端同步面板**：在 KMP 共享層利用 `SharedViewModel` 維持單一異常狀態水管（`anomalyStatus`），Android 端以 Jetpack Compose 右側按鈕群頂層的膠囊字卡呈現，iOS 端以 SwiftUI 懸浮字卡對齊，實現雙端即時聯動。
   * **動態視覺回饋**：當底層機器學習模型預測分數過高或觸發警告（狀態含 `⚠️`）時，雙端 UI 自動同步切換為微透紅底紅字提示，提供即時、直覺的視覺告警。
+  * **雙向模擬與控制機制**：於 KMP 核心 `SharedViewModel` 補強 `simulateAnomaly` 與 `resetAnomaly` 跨平台方法。成功打通由原生 UI 層（Compose 按鈕 / SwiftUI Button）反向灌入極端洋流異常訊號的控制鏈，支援雙端手動觸發動態異常與重置緩衝狀態。
 
 ## 📱 互動式 GIS 成果展示
 * **動態標籤渲染**：解析政府 Open Data 之風場區域 (GeoJSON)，實作半透明多邊形與標籤化渲染。
@@ -53,16 +54,17 @@
 
 ## 🏗️ 目前開發狀態
 - [x] 跨平台 KMP 專案基礎環境架構與 Ktor 2.3.12 整合
-- [x] **SharedViewModel 跨平台狀態同步邏輯 (StateFlow)**
+- [x] SharedViewModel 跨平台狀態同步邏輯 (StateFlow)
 - [x] OSMdroid 離線地圖底層渲染引擎 (Android)
-- [x] **Android 端漁標自定義改名與持久化儲存 (MarkerStorage)**
+- [x] Android 端漁標自定義改名與持久化儲存 (MarkerStorage)
 - [x] Android 端衛星圖資異步下載與緩存機制 (穩定版)
 - [x] 行政院政府 Open Data 風場資訊自動同步 (GeoJSON)
 - [x] 實時方位校正與距離計算演算法 (Kotlin Shared Logic)
 - [x] iOS 端 Apple Maps 整合與實時定位數據對接
-- [x] **iOS 端離線下載 UI (ProgressView) 與邏輯對接**
-- [x] **自動 GPS 定位智慧路網辨識與即時模式動態切換 (LAND/SEA)**
-- [x] **AI 航行異常偵測狀態水管與 Android/iOS 雙端 UI 燈號即時連動**
+- [x] iOS 端離線下載 UI (ProgressView) 與邏輯對接
+- [x] 自動 GPS 定位智慧路網辨識與即時模式動態切換 (LAND/SEA)
+- [x] AI 航行異常偵測狀態水管與 Android/iOS 雙端 UI 燈號即時連動
+- [x] 海域異常狀態雙向模擬控制水管與雙端 UI 響應式重置功能
 
 ## 📄 授權與聲明 (License & Disclaimer)
 * **版權所有**：© 2026 Ella Liu. All rights reserved.

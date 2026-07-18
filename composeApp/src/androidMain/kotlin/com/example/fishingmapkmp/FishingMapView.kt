@@ -37,9 +37,11 @@ actual fun FishingMapView(
     onMapClick: (Double, Double, String) -> Unit,
     onMarkerClick: (CustomMarker?) -> Unit,
     onLocationUpdate: (Double, Double) -> Unit, // 🎯 用來傳回目前 GPS 座標
-    onRenameClick: (CustomMarker, String) -> Unit, // 🎯 新增參數
+    onRenameClick: (CustomMarker, String) -> Unit,
     onClearAllClick: () -> Unit,
-    anomalyStatus: String, // 🎯 【精確新增這行參數，預設為正常航行】
+    anomalyStatus: String, // 🎯 【預設為正常航行】
+    onSimulateAnomaly: (Double, Double) -> Unit,  // 直接將模擬測試需要的事件用 lambda 傳出去給 ViewModel
+    onResetAnomaly: (Double, Double) -> Unit,
     planRoute: (Double, Double, Double, Double, String) -> List<Pair<Double, Double>> // 🎯 傳入 KMP 智慧路徑規劃方法
 ) {
     val context = LocalContext.current
@@ -47,19 +49,18 @@ actual fun FishingMapView(
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
     var locationOverlayRef by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
     val windFarmData = remember { mutableStateOf<WindFarmGeoJson?>(null) }
-
-    // --- 🎯 6. 補回：新增點位名稱輸入視窗相關狀態 ---
+    // --- 🎯 新增點位名稱輸入視窗相關狀態 ---
     var showMarkerDialog by remember { mutableStateOf(false) }
     var tempLocation by remember { mutableStateOf<GeoPoint?>(null) }
     var markerNameInput by remember { mutableStateOf("新釣點") }
-    // 1. 建立改名用的狀態
+    // 建立改名用的狀態
     var showRenameDialog by remember { mutableStateOf(false) }
     var markerToRename by remember { mutableStateOf<CustomMarker?>(null) }
     var newNameInput by remember { mutableStateOf("") }
     var mapReference by remember { mutableStateOf<MapView?>(null) }
     val scope = rememberCoroutineScope()
 
-    // 2. 改名對話框 (UI 層)
+    // 改名對話框 (UI 層)
     if (showRenameDialog && markerToRename != null) {
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
@@ -107,10 +108,10 @@ actual fun FishingMapView(
                     controller.setZoom(15.0)
                     controller.setCenter(GeoPoint(initialCenter.first, initialCenter.second))
 
-                    // 🎯 修正點：必須在這裡 new，傳入 this 就不會閃退
+                    // 🎯 必須在這裡 new，傳入 this 就不會閃退
                     val overlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
 
-                    // --- 恢復你原本的綠色三角形繪製邏輯 ---
+                    // --- 綠色三角形繪製邏輯 ---
                     val bitSize = 60
                     val bit = Bitmap.createBitmap(bitSize, bitSize, Bitmap.Config.ARGB_8888)
                     val canvas = Canvas(bit)
@@ -134,14 +135,13 @@ actual fun FishingMapView(
                     overlays.add(overlay)
 
                     locationOverlayRef = overlay // 存入引用
-                    // -----------------------------------
 
-                    // 恢復指南針
+                    // 指南針
                     val compass = CompassOverlay(ctx, this)
                     compass.enableCompass()
                     overlays.add(compass)
 
-                    // 🎯 3. 地圖點擊監聽
+                    // 🎯 地圖點擊監聽
                     val mapEventsReceiver = object : org.osmdroid.events.MapEventsReceiver {
                         override fun singleTapConfirmedHelper(p: GeoPoint?): Boolean {
                             p?.let {
@@ -160,7 +160,7 @@ actual fun FishingMapView(
             },
             update = { mapView ->
                 mapReference = mapView
-                // 🎯 4. 衛星/一般模式切換
+                // 🎯 衛星/一般模式切換
                 if (isSatelliteMode) {
                     mapView.setTileSource(object :
                         org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase(
@@ -185,19 +185,15 @@ actual fun FishingMapView(
                     mapView.setTileSource(TileSourceFactory.MAPNIK)
                 }
 
-                // 🎯 5. 繪製標記與導航線
+                // 🎯 繪製標記與導航線
                 mapView.overlays.removeAll { it is Marker || it is Polyline }
 
                 // 如果 API 資料抓到了，就畫在地圖上
                 windFarmData.value?.let { data ->
-                    // 避免重複加入，先清除舊的風場圖層 (如果你有給圖層標籤的話)
-                    // map.overlays.removeAll { it is Polygon }
-
                     data.features.forEach { feature ->
                         val osmdroidPolygon = org.osmdroid.views.overlay.Polygon()
                         val points = mutableListOf<GeoPoint>()
 
-                        // 解析 GeoJSON 座標 [lng, lat] -> GeoPoint(lat, lng)
                         feature.geometry.coordinates.firstOrNull()?.forEach { coord ->
                             points.add(GeoPoint(coord[1], coord[0]))
                         }
@@ -221,7 +217,6 @@ actual fun FishingMapView(
                         title = data.name
                         infoWindow = null
                         setOnMarkerClickListener { marker, _ ->
-                            // 🎯 核心修正 2：判斷邏輯
                             if (selectedMarker?.latitude == data.latitude &&
                                 selectedMarker?.longitude == data.longitude
                             ) {
@@ -230,7 +225,6 @@ actual fun FishingMapView(
                                 newNameInput = data.name
                                 showRenameDialog = true
                             } else {
-                                // 否則，執行原本的導航邏ctions
                                 onMarkerClick(data)
                             }
                             true
@@ -239,20 +233,17 @@ actual fun FishingMapView(
                     mapView.overlays.add(m)
                 }
 
-                // 🎯 修正點 3：畫導航線 (僅在非 null 時,整合 AI 智慧全地形路徑)
                 selectedMarker?.let { target ->
                     locationOverlayRef?.myLocation?.let { myLoc ->
-                        // 呼叫傳進來的 KMP AI 智慧路徑規劃
                         val routePoints = planRoute(
-                            myLoc.latitude,       // p1: 目前緯度
-                            myLoc.longitude,      // p2: 目前經度
-                            target.latitude,      // p3: 目標緯度
-                            target.longitude,     // p4: 目標經度
-                            target.name           // p5: 目標名稱
+                            myLoc.latitude,
+                            myLoc.longitude,
+                            target.latitude,
+                            target.longitude,
+                            target.name
                         )
 
                         val line = Polyline(mapView).apply {
-                            // 將 KMP 回傳的 Pair 列表轉成 OSMDroid 的 GeoPoint 列表
                             setPoints(routePoints.map { GeoPoint(it.first, it.second) })
                             outlinePaint.color = android.graphics.Color.RED
                             outlinePaint.strokeWidth = 12f
@@ -260,7 +251,6 @@ actual fun FishingMapView(
                         mapView.overlays.add(line)
                     }
                 }
-                // 🎯 把目前的 GPS 位置傳回給 App.kt
                 locationOverlayRef?.myLocation?.let { myLoc ->
                     onLocationUpdate(myLoc.latitude, myLoc.longitude)
                 }
@@ -271,7 +261,6 @@ actual fun FishingMapView(
         if (selectedMarker != null) {
             val myLoc = locationOverlayRef?.myLocation
             if (myLoc != null) {
-                // 計算距離（公里）
                 val results = FloatArray(1)
                 android.location.Location.distanceBetween(
                     myLoc.latitude, myLoc.longitude,
@@ -285,7 +274,7 @@ actual fun FishingMapView(
 
                 Surface(
                     modifier = Modifier
-                        .padding(top = 90.dp, start = 16.dp) // 避開指南針
+                        .padding(top = 90.dp, start = 16.dp)
                         .align(Alignment.TopStart),
                     color = Color.Black.copy(alpha = 0.7f),
                     shape = RoundedCornerShape(8.dp)
@@ -299,14 +288,13 @@ actual fun FishingMapView(
                     )
                 }
 
-                // 🎯 3. AI 全地形環境狀態標籤 (顯示在中上方)
                 Surface(
                     modifier = Modifier
                         .padding(top = 24.dp)
                         .align(Alignment.TopCenter),
                     color = if (currentMode == NavigationMode.LAND) Color(0xFFE65100).copy(alpha = 0.85f) else Color(
                         0xFF0D47A1
-                    ).copy(alpha = 0.85f), // 陸地橘色，海上藍色
+                    ).copy(alpha = 0.85f),
                     shape = RoundedCornerShape(20.dp),
                     shadowElevation = 6.dp
                 ) {
@@ -325,43 +313,82 @@ actual fun FishingMapView(
             }
         }
 
-        // 🎯 6. 右上角按鈕組 (紫色圓角)
+        // 右上角按鈕組
         Column(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(top = 64.dp, end = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // 🎯 AI 狀態燈號，放在按鈕群的最上方！
             val isWarning = anomalyStatus.contains("⚠️")
+
+            // 🤖 Edge AI 狀態監控灰色背景面板
             Column(
-                modifier = Modifier // 🎯 這裡直接用 Modifier 即可，把原本的 .someModifier 刪掉
-                    .width(105.dp)
+                modifier = Modifier
+                    .width(140.dp)
                     .background(
-                        color = if (isWarning) Color.Red.copy(alpha = 0.2f) else Color.White.copy(
-                            alpha = 0.9f
-                        ),
-                        shape = RoundedCornerShape(8.dp)
+                        color = if (isWarning) Color.Red.copy(alpha = 0.25f) else Color.DarkGray.copy(alpha = 0.85f),
+                        shape = RoundedCornerShape(12.dp)
                     )
-                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                    .padding(8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = "🤖 AI航行狀態",
-                    color = Color.Gray,
+                    text = "🤖 Edge AI 狀態監控",
+                    color = Color.LightGray,
                     fontSize = 10.sp,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
                 )
+
                 Text(
-                    text = if (anomalyStatus.isBlank()) "正常航行" else if (isWarning) "⚠️異常" else "正常航行",
+                    text = if (isWarning) "⚠️ 航行異常" else "🟢 正常航行",
                     color = if (isWarning) Color.Red else Color(0xFF4CAF50),
                     fontSize = 12.sp,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 )
+
+                Divider(color = Color.Gray.copy(alpha = 0.5f), thickness = 0.5.dp)
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(text = "演算法: 馬氏距離 (MD)", color = Color.White, fontSize = 9.sp)
+                    Text(text = "時序視窗: 30s 滑動視窗", color = Color.White, fontSize = 9.sp)
+                    Text(text = "監控維度: 速度 ✕ 航向率", color = Color.White, fontSize = 9.sp)
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // 🚀 【完美合併版】單一智慧型 Edge AI 數據控制鈕（這顆按鈕必須在這個括號內！）
+                Button(
+                    onClick = {
+                        val lat = locationOverlayRef?.myLocation?.latitude ?: 25.1
+                        val lng = locationOverlayRef?.myLocation?.longitude ?: 121.5
+
+                        if (isWarning) {
+                            onResetAnomaly(lat, lng)
+                        } else {
+                            onSimulateAnomaly(lat, lng)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isWarning) Color(0xFF4CAF50) else Color.Red
+                    ),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                    modifier = Modifier.fillMaxWidth().height(28.dp),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = if (isWarning) "✅ 恢復正常" else "💥 模擬遭遇暴流",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    )
+                }
             }
 
-            // 衛星模式文字隨狀態切換
             MapButton(if (isSatelliteMode) "一般模式" else "衛星模式", Color(0xFF6200EE)) {
                 isSatelliteMode = !isSatelliteMode
             }
@@ -372,9 +399,8 @@ actual fun FishingMapView(
                 }
             }
 
-            // 清空所有點位按鈕
             MapButton("清空所有點位", Color.Gray) {
-                onClearAllClick() // 執行傳進來的清空邏輯
+                onClearAllClick()
             }
 
             if (selectedMarker != null) {
@@ -387,15 +413,12 @@ actual fun FishingMapView(
                 onClick = {
                     mapReference?.let { map ->
                         val tileSource = map.tileProvider.tileSource
-
-                        // 只有在衛星模式（非 Mapnik）時才執行背景下載
                         if (tileSource.name() != "Mapnik") {
                             try {
                                 val cache = CacheManager(map)
                                 val currentZoom = map.zoomLevelDouble.toInt()
                                 val boundingBox = map.boundingBox
 
-                                // 🎯 必須在 Main 執行緒發起，osmdroid 內部才能正確建立 Dialog 實體
                                 scope.launch(Dispatchers.Main) {
                                     cache.downloadAreaAsync(
                                         context,
@@ -403,61 +426,37 @@ actual fun FishingMapView(
                                         currentZoom,
                                         currentZoom,
                                         object : CacheManager.CacheManagerCallback {
-                                            // 補齊新版本要求的 setPossibleTilesInArea
                                             override fun setPossibleTilesInArea(total: Int) {}
-
                                             override fun onTaskComplete() {
-                                                Toast.makeText(
-                                                    context,
-                                                    "下載完成",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
+                                                Toast.makeText(context, "下載完成", Toast.LENGTH_SHORT).show()
                                             }
-
                                             override fun onTaskFailed(errors: Int) {
-                                                Toast.makeText(
-                                                    context,
-                                                    "下載失敗",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
+                                                Toast.makeText(context, "下載失敗", Toast.LENGTH_SHORT).show()
                                             }
-
-                                            // 補齊 4 個參數版本的 updateProgress
-                                            override fun updateProgress(
-                                                p: Int,
-                                                c: Int,
-                                                z: Int,
-                                                zoomMax: Int
-                                            ) {
-                                            }
-
+                                            override fun updateProgress(p: Int, c: Int, z: Int, zoomMax: Int) {}
                                             override fun downloadStarted() {}
                                         }
                                     )
                                 }
-                                Toast.makeText(context, "開始背景預載...", Toast.LENGTH_SHORT)
-                                    .show()
+                                Toast.makeText(context, "開始背景預載...", Toast.LENGTH_SHORT).show()
                             } catch (e: Exception) {
                                 map.invalidate()
                             }
                         } else {
-                            // 一般模式下只做刷新
                             map.invalidate()
                             Toast.makeText(context, "已更新當前快取", Toast.LENGTH_SHORT).show()
                         }
                     }
                 },
-                // 🎨 修正顏色紅字：Material 2 使用 backgroundColor
                 colors = ButtonDefaults.buttonColors(
-                    Color(0xFF6200EE), // 第一個位置通常是背景色
-                    Color.White        // 第二個位置通常是內容(文字)色
+                    containerColor = Color(0xFF6200EE),
+                    contentColor = Color.White
                 )
             ) {
                 Text("預載此區")
             }
         }
 
-        // --- 🎯 7.新增點位的彈跳視窗 (AlertDialog) ---
         if (showMarkerDialog && tempLocation != null) {
             AlertDialog(
                 onDismissRequest = { showMarkerDialog = false },

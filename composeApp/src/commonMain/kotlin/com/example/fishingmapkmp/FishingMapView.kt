@@ -16,5 +16,7 @@ expect fun FishingMapView(
     onRenameClick: (CustomMarker, String) -> Unit, // 🎯 新增參數
     onClearAllClick: () -> Unit,
     anomalyStatus: String = "正常航行",// 🎯 【精確新增這行參數，預設為正常航行】
+    onSimulateAnomaly: (Double, Double) -> Unit,
+    onResetAnomaly: (Double, Double) -> Unit,
     planRoute: (Double, Double, Double, Double, String) -> List<Pair<Double, Double>> // 🎯 傳入 KMP 智慧路徑規劃方法
 )

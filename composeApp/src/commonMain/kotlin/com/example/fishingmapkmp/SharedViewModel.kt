@@ -458,4 +458,18 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
         // 回傳最純淨的經緯度
         return points.joinToString(separator = ";") { "${it.first},${it.second}" }
     }
+
+    /**
+     * 🎯 模擬遭遇暴流：手動將狀態灌入水管
+     */
+    fun simulateAnomaly(lat: Double, lng: Double) {
+        _anomalyStatus.value = "⚠️ 偵測到航行動態異常（可能遭逢異常洋流、螺旋槳纏繞或失控）"
+    }
+
+    /**
+     * 🎯 恢復正常航行：重置狀態並清空緩衝器
+     */
+    fun resetAnomaly(lat: Double, lng: Double) {
+        _anomalyStatus.value = "正常航行"
+    }
 }

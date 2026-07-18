@@ -37,6 +37,8 @@ We successfully resolved critical challenges regarding OSMDroid stability in Com
 * **AI Navigation Anomaly & Collision Detection Mechanism**:
   * **Cross-Platform Unified Dashboard**: Utilizes `SharedViewModel` in the KMP shared layer to maintain a single source of truth for the anomaly status flow (`anomalyStatus`). The state is seamlessly rendered on Android using a Jetpack Compose capsule card atop the right-side button group, and matched symmetrically on iOS via SwiftUI.
   * **Dynamic Visual Feedback**: When the underlying ML model score spikes or triggers an alert (status contains `⚠️`), both platform UIs instantly and dynamically pivot to a semi-transparent red background with bold red typography for real-time, intuitive cognitive alerting.
+  * **Bidirectional Simulation & Control**: Implemented `simulateAnomaly` and `resetAnomaly` methods in the KMP `SharedViewModel`. It enables reactive reverse-triggering from native UI layers (Jetpack Compose / SwiftUI buttons), allowing developers or users to simulate extreme current anomalies and clear cache buffers on the fly.
+
 
 ## 📱 Interactive GIS Showcase
 * **Dynamic Label Rendering**: Parses government Open Data for wind farm areas (GeoJSON), implementing semi-transparent polygon and label rendering.
@@ -62,7 +64,8 @@ We successfully resolved critical challenges regarding OSMDroid stability in Com
 - [x] iOS Apple Maps integration & real-time location streaming
 - [x] iOS offline download UI (ProgressView) & logic binding
 - [x] Automatic GPS Smart Route Detection & dynamic mode switching (LAND/SEA)
-- [x] **AI Navigation Anomaly Detection status flow & real-time Android/iOS dual-platform UI indicator binding**
+- [x] AI Navigation Anomaly Detection status flow & real-time Android/iOS dual-platform UI indicator binding
+- [x] Bidirectional simulation pipeline for marine anomalies with reactive dual-platform UI state resetting
 
 ## 📄 License & Disclaimer
 * **Copyright**: © 2026 Ella Liu. All rights reserved.

@@ -62,10 +62,9 @@ fun App(viewModel: SharedViewModel) {// 接收傳入的 viewModel
             modifier = Modifier.fillMaxSize(),
             initialCenter = Pair(25.0330, 121.5654),
             markerList = markers.map { CustomMarker(it.lat, it.lng, it.name) },
-            selectedMarker = selectedMarker, // 🎯 確保這裡有傳進去
+            selectedMarker = selectedMarker,
             onMapClick = { lat, lng, name ->
                 viewModel.saveSpot(lat, lng, name)
-                // 為了讓 Android 重開 App 還有資料，同步存入 MarkerStorage
                 val updatedList =
                     markers.map { CustomMarker(it.lat, it.lng, it.name) } + CustomMarker(
                         lat,
@@ -78,29 +77,46 @@ fun App(viewModel: SharedViewModel) {// 接收傳入的 viewModel
                 selectedMarker = marker
                 showBottomInfo = (marker != null)
             },
-            // 🎯接收從地圖元件傳回來的經緯度
             onLocationUpdate = { lat, lon ->
                 userLocation = Pair(lat, lon)
             },
-            onRenameClick = onUpdateMarkerName, // 🎯 傳入改名回呼
+            onRenameClick = onUpdateMarkerName,
 
             onClearAllClick = {
-                // ✅ 執行清空
                 viewModel.clearAllSpots()
-
-                // 清除 Android 本地的導航狀態
                 selectedMarker = null
                 showBottomInfo = false
             },
-            // 🎯 傳入從 ViewModel 收到的目前模式
             currentMode = currentMode,
-
-            // 🎯 傳入 AI 異常狀態
             anomalyStatus = anomalyStatus,
 
-            // 🎯實作 AI 智慧路徑規劃的銜接
+            // 🚀 一鍵注入異常數據的 lambda 連接
+            onSimulateAnomaly = { lat, lng ->
+                // 模擬極端異常狀況：船隻速度突變為 45 節（超速），且航向在一秒內暴轉，強迫擠滿滑動視窗觸發預測
+                repeat(16) {
+                    viewModel.updateShipStatus(
+                        speedMps = 23.0,
+                        headingDegrees = 180.0,
+                        lat = lat,
+                        lng = lng
+                    )
+                }
+            },
+
+            // 🚀 恢復正常數據的 lambda 連接
+            onResetAnomaly = { lat, lng ->
+                // 恢復正常平穩基線（約 10 節速度）
+                repeat(16) {
+                    viewModel.updateShipStatus(
+                        speedMps = 5.14,
+                        headingDegrees = 10.0,
+                        lat = lat,
+                        lng = lng
+                    )
+                }
+            },
+
             planRoute = { myLat, myLng, targetLat, targetLng, targetName ->
-                // 🎯 直接把 5 個基礎參數傳給 ViewModel
                 viewModel.planSmartRoute(myLat, myLng, targetLat, targetLng, targetName)
             }
         )

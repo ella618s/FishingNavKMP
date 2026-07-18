@@ -104,21 +104,56 @@ struct ContentView: View {
                 Spacer()
                 VStack(spacing: 15) {
                     // 🎯 AI 航行異常偵測的浮動燈號面板
-                    VStack(spacing: 4) {
+                    VStack(spacing: 6) {
                         Text("🤖 AI 航行狀態")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(.gray)
                         
+                        let isWarning = myKmpBridge.anomalyStatusText.contains("⚠️")
+                        
                         Text(myKmpBridge.anomalyStatusText)
                             .font(.system(size: 13, weight: .bold))
-                        // 如果包含警告符號，字體變紅色，平常正常航行顯示綠色
-                            .foregroundColor(myKmpBridge.anomalyStatusText.contains("⚠️") ? .red : .green)
+                            .foregroundColor(isWarning ? .red : .green)
+                        
+                        Divider()
+                            .background(Color.gray.opacity(0.3))
+                            .padding(.vertical, 2)
+                        
+                        // 📊 演算法詳細數據
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("演算法: 馬氏距離 (MD)").font(.system(size: 9)).foregroundColor(.gray)
+                            Text("時序視窗: 30s 滑動視窗").font(.system(size: 9)).foregroundColor(.gray)
+                            Text("監控維度: 速度 ✕ 航向率").font(.system(size: 9)).foregroundColor(.gray)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        
+                        Spacer().frame(height: 4)
+                        
+                        // 💥 點擊發送異常資料的按鈕
+                        Button(action: {
+                            // 安全拿到地圖當前中心點位置作為發送座標
+                            let lat = mapView?.centerCoordinate.latitude ?? 25.1
+                            let lng = mapView?.centerCoordinate.longitude ?? 121.5
+                            
+                            if isWarning {
+                                myKmpBridge.sharedVM.resetAnomaly(lat: lat, lng: lng)
+                            } else {
+                                myKmpBridge.sharedVM.simulateAnomaly(lat: lat, lng: lng)
+                            }
+                        }) {
+                            Text(isWarning ? "✅ 恢復正常" : "💥 模擬遭遇暴流")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity, minHeight: 26)
+                                .background(isWarning ? Color.green : Color.red)
+                                .cornerRadius(6)
+                        }
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
-                    // 當有警告時，背景微微變紅；平常則是高質感的白底半透明
+                    .frame(width: 145) // 固定面板寬度與 Compose 同步
                     .background(myKmpBridge.anomalyStatusText.contains("⚠️") ? Color.red.opacity(0.15) : Color.white.opacity(0.9))
-                    .cornerRadius(8)
+                    .cornerRadius(12)
                     .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
                     .padding(.bottom, 5)
                     
