@@ -18,7 +18,8 @@ class MapViewModel: NSObject, ObservableObject, CLLocationManagerDelegate { // �
     @Published var collisionAlert: String? = nil
     // 🎯 用來即時刷新 iOS UI 畫面的 AI 偵測狀態文字
     @Published var anomalyStatusText: String = "正常航行"
-    
+    // 🎯 新增離線天氣預警文字屬性
+    @Published var weatherAlertText: String = "☀️ 氣壓穩定・天氣正常"
     // 🎯 建立純 Swift 的定位管理器
     private let locationManager = CLLocationManager()
     
@@ -38,6 +39,20 @@ class MapViewModel: NSObject, ObservableObject, CLLocationManagerDelegate { // �
         self.detector.setupNativePredictor { (inputData: KotlinFloatArray) -> KotlinFloat in
             let mockScore: Float = 0.1
             return KotlinFloat(value: mockScore) // ✅ 使用 KotlinFloat 包裝回傳
+        }
+        
+        // 🎯 監聽 Kotlin 的 AI 異常狀態水管
+        self.sharedVM.watchAnomalyStatus { [weak self] (status: String) in
+            guard let self = self else { return }
+            self.anomalyStatusText = status
+        }
+                
+        // 🎯 監聽離線氣象天氣預警水管！
+        self.sharedVM.watchWeatherAlert { [weak self] (alert: String) in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                self.weatherAlertText = alert
+            }
         }
         
         // 🎯 監聽 Kotlin 的 AI 異常狀態水管，即時同步到 SwiftUI

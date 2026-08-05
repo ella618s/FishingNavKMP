@@ -1,31 +1,30 @@
 package com.example.fishingmapkmp
 
 import android.graphics.*
+import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import org.osmdroid.tileprovider.cachemanager.CacheManager
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
-import org.osmdroid.views.overlay.compass.CompassOverlay // 🎯 導入指南針
+import org.osmdroid.views.overlay.compass.CompassOverlay
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
-import org.osmdroid.tileprovider.cachemanager.CacheManager
-import android.widget.Toast
-import androidx.compose.ui.graphics.Color
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.foundation.background
 
 @Composable
 actual fun FishingMapView(
@@ -33,34 +32,36 @@ actual fun FishingMapView(
     initialCenter: Pair<Double, Double>,
     markerList: List<CustomMarker>,
     selectedMarker: CustomMarker?,
-    currentMode: NavigationMode, // 🎯 接收來自 ViewModel 的 AI 模式狀態
+    currentMode: NavigationMode,
     onMapClick: (Double, Double, String) -> Unit,
     onMarkerClick: (CustomMarker?) -> Unit,
-    onLocationUpdate: (Double, Double) -> Unit, // 🎯 用來傳回目前 GPS 座標
+    onLocationUpdate: (Double, Double) -> Unit,
     onRenameClick: (CustomMarker, String) -> Unit,
     onClearAllClick: () -> Unit,
-    anomalyStatus: String, // 🎯 【預設為正常航行】
-    onSimulateAnomaly: (Double, Double) -> Unit,  // 直接將模擬測試需要的事件用 lambda 傳出去給 ViewModel
+    anomalyStatus: String,
+    weatherAlert: String,
+    onSimulateAnomaly: (Double, Double) -> Unit,
+    onSimulateBarometerDrop: () -> Unit, // 👈 🎯 新增：專屬氣壓驟降的事件
     onResetAnomaly: (Double, Double) -> Unit,
-    planRoute: (Double, Double, Double, Double, String) -> List<Pair<Double, Double>> // 🎯 傳入 KMP 智慧路徑規劃方法
+    planRoute: (Double, Double, Double, Double, String) -> List<Pair<Double, Double>>
 ) {
     val context = LocalContext.current
     var isSatelliteMode by remember { mutableStateOf(false) }
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
     var locationOverlayRef by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
     val windFarmData = remember { mutableStateOf<WindFarmGeoJson?>(null) }
-    // --- 🎯 新增點位名稱輸入視窗相關狀態 ---
+
     var showMarkerDialog by remember { mutableStateOf(false) }
     var tempLocation by remember { mutableStateOf<GeoPoint?>(null) }
     var markerNameInput by remember { mutableStateOf("新釣點") }
-    // 建立改名用的狀態
+
     var showRenameDialog by remember { mutableStateOf(false) }
     var markerToRename by remember { mutableStateOf<CustomMarker?>(null) }
     var newNameInput by remember { mutableStateOf("") }
     var mapReference by remember { mutableStateOf<MapView?>(null) }
     val scope = rememberCoroutineScope()
 
-    // 改名對話框 (UI 層)
+    // 修改名稱對話框
     if (showRenameDialog && markerToRename != null) {
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
@@ -93,7 +94,7 @@ actual fun FishingMapView(
             val result = ApiClient.fetchWindFarmZones()
             windFarmData.value = result
         } catch (e: Exception) {
-            e.printStackTrace() // 處理網路錯誤
+            e.printStackTrace()
         }
     }
 
@@ -101,17 +102,16 @@ actual fun FishingMapView(
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
-                org.osmdroid.config.Configuration.getInstance().userAgentValue = context.packageName
+                org.osmdroid.config.Configuration.getInstance().userAgentValue = "FishingNavApp/2.0 (Android)"
+
                 MapView(ctx).apply {
                     mapReference = this
                     setMultiTouchControls(true)
                     controller.setZoom(15.0)
                     controller.setCenter(GeoPoint(initialCenter.first, initialCenter.second))
 
-                    // 🎯 必須在這裡 new，傳入 this 就不會閃退
                     val overlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
 
-                    // --- 綠色三角形繪製邏輯 ---
                     val bitSize = 60
                     val bit = Bitmap.createBitmap(bitSize, bitSize, Bitmap.Config.ARGB_8888)
                     val canvas = Canvas(bit)
@@ -122,31 +122,34 @@ actual fun FishingMapView(
                         setShadowLayer(8f, 0f, 0f, android.graphics.Color.BLACK)
                     }
                     val path = Path().apply {
-                        moveTo(30f, 5f); lineTo(50f, 55f); lineTo(30f, 45f); lineTo(
-                        10f,
-                        55f
-                    ); close()
+                        moveTo(30f, 5f); lineTo(50f, 55f); lineTo(30f, 45f); lineTo(10f, 55f); close()
                     }
                     canvas.drawPath(path, p)
                     overlay.setDirectionArrow(bit, bit)
                     overlay.setDirectionAnchor(0.5f, 0.5f)
                     overlay.setPersonAnchor(0.5f, 0.5f)
                     overlay.enableMyLocation()
+
+                    overlay.runOnFirstFix {
+                        val loc = overlay.myLocation
+                        if (loc != null) {
+                            post {
+                                onLocationUpdate(loc.latitude, loc.longitude)
+                            }
+                        }
+                    }
+
                     overlays.add(overlay)
+                    locationOverlayRef = overlay
 
-                    locationOverlayRef = overlay // 存入引用
-
-                    // 指南針
                     val compass = CompassOverlay(ctx, this)
                     compass.enableCompass()
                     overlays.add(compass)
 
-                    // 🎯 地圖點擊監聽
                     val mapEventsReceiver = object : org.osmdroid.events.MapEventsReceiver {
                         override fun singleTapConfirmedHelper(p: GeoPoint?): Boolean {
                             p?.let {
-                                tempLocation = it; markerNameInput = "新釣點"; showMarkerDialog =
-                                true
+                                tempLocation = it; markerNameInput = "新釣點"; showMarkerDialog = true
                             }
                             return true
                         }
@@ -155,12 +158,16 @@ actual fun FishingMapView(
                     }
                     overlays.add(org.osmdroid.views.overlay.MapEventsOverlay(mapEventsReceiver))
 
-                    mapViewRef = this // 保存地圖引用
+                    mapViewRef = this
                 }
             },
             update = { mapView ->
                 mapReference = mapView
-                // 🎯 衛星/一般模式切換
+
+                locationOverlayRef?.myLocation?.let { myLoc ->
+                    onLocationUpdate(myLoc.latitude, myLoc.longitude)
+                }
+
                 if (isSatelliteMode) {
                     mapView.setTileSource(object :
                         org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase(
@@ -168,27 +175,16 @@ actual fun FishingMapView(
                             arrayOf("https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}")
                         ) {
                         override fun getTileURLString(pTileIndex: Long): String = baseUrl
-                            .replace(
-                                "{x}",
-                                org.osmdroid.util.MapTileIndex.getX(pTileIndex).toString()
-                            )
-                            .replace(
-                                "{y}",
-                                org.osmdroid.util.MapTileIndex.getY(pTileIndex).toString()
-                            )
-                            .replace(
-                                "{z}",
-                                org.osmdroid.util.MapTileIndex.getZoom(pTileIndex).toString()
-                            )
+                            .replace("{x}", org.osmdroid.util.MapTileIndex.getX(pTileIndex).toString())
+                            .replace("{y}", org.osmdroid.util.MapTileIndex.getY(pTileIndex).toString())
+                            .replace("{z}", org.osmdroid.util.MapTileIndex.getZoom(pTileIndex).toString())
                     })
                 } else {
                     mapView.setTileSource(TileSourceFactory.MAPNIK)
                 }
 
-                // 🎯 繪製標記與導航線
                 mapView.overlays.removeAll { it is Marker || it is Polyline }
 
-                // 如果 API 資料抓到了，就畫在地圖上
                 windFarmData.value?.let { data ->
                     data.features.forEach { feature ->
                         val osmdroidPolygon = org.osmdroid.views.overlay.Polygon()
@@ -199,24 +195,21 @@ actual fun FishingMapView(
                         }
 
                         osmdroidPolygon.points = points
-                        osmdroidPolygon.fillPaint.color =
-                            android.graphics.Color.parseColor("#406200EE") // 半透明紫
+                        osmdroidPolygon.fillPaint.color = android.graphics.Color.parseColor("#406200EE")
                         osmdroidPolygon.strokeColor = android.graphics.Color.parseColor("#FF6200EE")
                         osmdroidPolygon.strokeWidth = 3f
                         osmdroidPolygon.title = feature.properties.wpName ?: "未知風場"
 
                         mapView.overlays.add(osmdroidPolygon)
                     }
-                    mapView.invalidate()
                 }
 
-                // 畫大頭針
                 markerList.forEach { data ->
                     val m = Marker(mapView).apply {
                         position = GeoPoint(data.latitude, data.longitude)
                         title = data.name
                         infoWindow = null
-                        setOnMarkerClickListener { marker, _ ->
+                        setOnMarkerClickListener { _, _ ->
                             if (selectedMarker?.latitude == data.latitude &&
                                 selectedMarker?.longitude == data.longitude
                             ) {
@@ -251,13 +244,54 @@ actual fun FishingMapView(
                         mapView.overlays.add(line)
                     }
                 }
-                locationOverlayRef?.myLocation?.let { myLoc ->
-                    onLocationUpdate(myLoc.latitude, myLoc.longitude)
-                }
+
                 mapView.invalidate()
             }
         )
 
+        // 🎯 頂部單一氣象預警膠囊 (避開狀態列挖孔)
+        val isAlert = weatherAlert.contains("⚠️") || weatherAlert.contains("🌦️") || weatherAlert.contains("驟降")
+        Surface(
+            modifier = Modifier
+                .statusBarsPadding()
+                .padding(top = 8.dp)
+                .align(Alignment.TopCenter),
+            color = if (isAlert) Color.Red.copy(alpha = 0.85f) else Color.Black.copy(alpha = 0.75f),
+            shape = RoundedCornerShape(20.dp),
+            shadowElevation = 6.dp
+        ) {
+            Text(
+                text = weatherAlert,
+                color = if (isAlert) Color.Yellow else Color.White,
+                fontSize = 13.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+        }
+
+        // 🎯 AI 辨識膠囊：固定在畫面「最底下中央」
+        Surface(
+            modifier = Modifier
+                .padding(bottom = 30.dp)
+                .align(Alignment.BottomCenter),
+            color = if (currentMode == NavigationMode.LAND) Color(0xFFE65100).copy(alpha = 0.9f) else Color(0xFF0D47A1).copy(alpha = 0.9f),
+            shape = RoundedCornerShape(20.dp),
+            shadowElevation = 6.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (currentMode == NavigationMode.LAND) "🚗 AI 辨識：陸地路網模式" else "🌊 AI 辨識：海域直線模式",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+            }
+        }
+
+        // 距離提示面板
         if (selectedMarker != null) {
             val myLoc = locationOverlayRef?.myLocation
             if (myLoc != null) {
@@ -268,13 +302,12 @@ actual fun FishingMapView(
                     results
                 )
                 val distanceKm = results[0] / 1000
-                val distText = if (distanceKm < 1) "${(distanceKm * 1000).toInt()} m" else "${
-                    "%.2f".format(distanceKm)
-                } km"
+                val distText = if (distanceKm < 1) "${(distanceKm * 1000).toInt()} m" else "${"%.2f".format(distanceKm)} km"
 
                 Surface(
                     modifier = Modifier
-                        .padding(top = 90.dp, start = 16.dp)
+                        .statusBarsPadding()
+                        .padding(top = 60.dp, start = 16.dp)
                         .align(Alignment.TopStart),
                     color = Color.Black.copy(alpha = 0.7f),
                     shape = RoundedCornerShape(8.dp)
@@ -287,105 +320,104 @@ actual fun FishingMapView(
                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                     )
                 }
-
-                Surface(
-                    modifier = Modifier
-                        .padding(top = 24.dp)
-                        .align(Alignment.TopCenter),
-                    color = if (currentMode == NavigationMode.LAND) Color(0xFFE65100).copy(alpha = 0.85f) else Color(
-                        0xFF0D47A1
-                    ).copy(alpha = 0.85f),
-                    shape = RoundedCornerShape(20.dp),
-                    shadowElevation = 6.dp
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (currentMode == NavigationMode.LAND) "🚗 AI 辨識：陸地路網模式" else "🌊 AI 辨識：海域直線模式",
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                        )
-                    }
-                }
             }
         }
 
-        // 右上角按鈕組
+        // 🎯 右上角面板與按鈕組
         Column(
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 64.dp, end = 16.dp),
+                .statusBarsPadding()
+                .padding(top = 60.dp, end = 16.dp)
+                .align(Alignment.TopEnd),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             val isWarning = anomalyStatus.contains("⚠️")
+            val isPressureAlert = weatherAlert.contains("驟降") || weatherAlert.contains("⚠️")
 
-            // 🤖 Edge AI 狀態監控灰色背景面板
-            Column(
-                modifier = Modifier
-                    .width(140.dp)
-                    .background(
-                        color = if (isWarning) Color.Red.copy(alpha = 0.25f) else Color.DarkGray.copy(alpha = 0.85f),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    .padding(8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+            // 🤖 Edge AI 狀態監控面板
+            Card(
+                modifier = Modifier.width(150.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isWarning || isPressureAlert) Color.Red.copy(alpha = 0.3f) else Color.DarkGray.copy(alpha = 0.85f)
+                )
             ) {
-                Text(
-                    text = "🤖 Edge AI 狀態監控",
-                    color = Color.LightGray,
-                    fontSize = 10.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-                )
-
-                Text(
-                    text = if (isWarning) "⚠️ 航行異常" else "🟢 正常航行",
-                    color = if (isWarning) Color.Red else Color(0xFF4CAF50),
-                    fontSize = 12.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                )
-
-                Divider(color = Color.Gray.copy(alpha = 0.5f), thickness = 0.5.dp)
-
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                    modifier = Modifier.padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    Text(
+                        text = "🤖 Edge AI 狀態監控",
+                        color = Color.LightGray,
+                        fontSize = 10.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                    )
+
+                    Text(
+                        text = if (isWarning) "⚠️ 航行異常" else "🟢 正常航行",
+                        color = if (isWarning) Color.Red else Color(0xFF4CAF50),
+                        fontSize = 12.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    )
+
+                    // 1. 🌩️ 氣壓驟降按鈕：正確指向 onSimulateBarometerDrop！
+                    Button(
+                        onClick = {
+                            val lat = locationOverlayRef?.myLocation?.latitude ?: 25.1
+                            val lng = locationOverlayRef?.myLocation?.longitude ?: 121.5
+                            if (isPressureAlert) {
+                                onResetAnomaly(lat, lng)
+                            } else {
+                                onSimulateBarometerDrop() // 👈 正確觸發氣壓驟降
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isPressureAlert) Color(0xFF4CAF50) else Color(0xFFFF9800)
+                        ),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.fillMaxWidth().height(28.dp),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = if (isPressureAlert) "✅ 恢復正常氣壓" else "🌩️ 模擬氣壓驟降",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                        )
+                    }
+
+                    // 2. 💥 模擬暴流按鈕：正確指向 onSimulateAnomaly！
+                    Button(
+                        onClick = {
+                            val lat = locationOverlayRef?.myLocation?.latitude ?: 25.1
+                            val lng = locationOverlayRef?.myLocation?.longitude ?: 121.5
+                            if (isWarning) {
+                                onResetAnomaly(lat, lng)
+                            } else {
+                                onSimulateAnomaly(lat, lng)
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isWarning) Color(0xFF4CAF50) else Color.Red
+                        ),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.fillMaxWidth().height(28.dp),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = if (isWarning) "✅ 恢復正常" else "💥 模擬遭遇暴流",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                        )
+                    }
+
+                    Divider(color = Color.Gray.copy(alpha = 0.5f), thickness = 0.5.dp)
+
                     Text(text = "演算法: 馬氏距離 (MD)", color = Color.White, fontSize = 9.sp)
                     Text(text = "時序視窗: 30s 滑動視窗", color = Color.White, fontSize = 9.sp)
                     Text(text = "監控維度: 速度 ✕ 航向率", color = Color.White, fontSize = 9.sp)
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // 🚀 【完美合併版】單一智慧型 Edge AI 數據控制鈕（這顆按鈕必須在這個括號內！）
-                Button(
-                    onClick = {
-                        val lat = locationOverlayRef?.myLocation?.latitude ?: 25.1
-                        val lng = locationOverlayRef?.myLocation?.longitude ?: 121.5
-
-                        if (isWarning) {
-                            onResetAnomaly(lat, lng)
-                        } else {
-                            onSimulateAnomaly(lat, lng)
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isWarning) Color(0xFF4CAF50) else Color.Red
-                    ),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                    modifier = Modifier.fillMaxWidth().height(28.dp),
-                    shape = RoundedCornerShape(6.dp)
-                ) {
-                    Text(
-                        text = if (isWarning) "✅ 恢復正常" else "💥 模擬遭遇暴流",
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                    )
                 }
             }
 

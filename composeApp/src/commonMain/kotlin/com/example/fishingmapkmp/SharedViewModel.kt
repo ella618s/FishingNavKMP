@@ -47,9 +47,11 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
     val markerList: StateFlow<List<FishingSpot>> = _markerList
     private val _downloadProgress = MutableStateFlow(0f)
     val downloadProgress: StateFlow<Float> = _downloadProgress
+
     // 宣告一個 StateFlow 讓 iOS 和 Android 畫面能即時知道目前是陸地還是海上導航
     private val _currentMode = MutableStateFlow<NavigationMode>(NavigationMode.SEA) // 預設為海上
     val currentMode: StateFlow<NavigationMode> = _currentMode.asStateFlow()
+
     // 🎯 儲存當前的航速（單位：公尺/秒，預設 0.0）與航向（單位：度，預設 0.0）
     private val _currentSpeed = MutableStateFlow(0.0)
     private val _currentHeading = MutableStateFlow(0.0)
@@ -58,9 +60,16 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
     private val _collisionAlert = MutableStateFlow<String?>(null)
     val collisionAlert: StateFlow<String?> = _collisionAlert.asStateFlow()
 
-    // 🎯 新增 AI 航行異常狀態水管
+    // 🎯 AI 航行異常狀態水管
     private val _anomalyStatus = MutableStateFlow<String>("正常航行")
     val anomalyStatus: StateFlow<String> = _anomalyStatus.asStateFlow()
+
+    // 🎯 儲存過去 3 小時內的氣壓快照歷史（離線時序分析）
+    private val barometerHistory = mutableListOf<Pair<Long, Double>>() // Pair(時間戳, 氣壓hPa)
+
+    // 🎯 新增離線氣象天氣預警水管
+    private val _weatherAlert = MutableStateFlow<String>("☀️ 氣壓穩定・天氣正常")
+    val weatherAlert: StateFlow<String> = _weatherAlert.asStateFlow()
 
     // 🎯 提供給 iOS 監聽警報的水管橋樑
     fun watchCollisionAlert(onUpdate: (String?) -> Unit) {
@@ -78,10 +87,22 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
         }.launchIn(viewModelScope)
     }
 
+    // 🎯 提供給 iOS 監聽離線天氣預警的水管接頭
+    fun watchWeatherAlert(onUpdate: (String) -> Unit) {
+        weatherAlert.onEach { alert ->
+            onUpdate(alert)
+        }.launchIn(viewModelScope)
+    }
+
     /**
      * 提供外部（iOS/Android）主動更新航速與航向的市場介面
      */
-    fun updateShipStatus(speedMps: Double, headingDegrees: Double, lat: Double = 0.0, lng: Double = 0.0) {
+    fun updateShipStatus(
+        speedMps: Double,
+        headingDegrees: Double,
+        lat: Double = 0.0,
+        lng: Double = 0.0
+    ) {
         _currentSpeed.value = speedMps
         _currentHeading.value = headingDegrees
 
@@ -105,6 +126,42 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
                 _anomalyStatus.value = "⚠️ 偵測到航行動態異常（可能遭逢異常洋流、螺旋槳纏繞或失控）"
             } else {
                 _anomalyStatus.value = "正常航行"
+            }
+        }
+    }
+
+    /**
+     * 🎯 接收感應器氣壓數據並進行離線惡劣天氣趨勢分析
+     * @param pressureHpa 當前氣壓計讀取到的百帕值 (hPa / mbar)
+     */
+    fun updateBarometerPressure(pressureHpa: Double) {
+        val currentTime = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+
+        // 1. 塞入歷史紀錄
+        barometerHistory.add(Pair(currentTime, pressureHpa))
+
+        // 2. 清除超過 3 小時（10800000 毫秒）的過期舊數據，保持記憶體輕量
+        val threeHoursAgo = currentTime - 10800000
+        barometerHistory.removeAll { it.first < threeHoursAgo }
+
+        // 3. 開始分析氣壓變率趋势 (Barometric Tendency)
+        if (barometerHistory.size >= 2) {
+            val earliestSnapshot = barometerHistory.first()
+            val latestSnapshot = barometerHistory.last()
+
+            val pressureDrop = earliestSnapshot.second - latestSnapshot.second
+            val timeDeltaHours = (latestSnapshot.first - earliestSnapshot.first) / 3600000.0
+
+            // 判斷機制：若在有效觀測時間內（比如累積滿10分鐘以上），3小時等效降幅超過 3.0 hPa
+            if (timeDeltaHours > 0.16 && pressureDrop >= 3.0) {
+                // 🎯 跨平台四捨五入到小數點第一位
+                val roundedDrop = (pressureDrop * 10).roundToInt() / 10.0
+                _weatherAlert.value =
+                    "⚠️ 暴風雨告警：氣壓急遽驟降 (${roundedDrop} hPa)！海上對流恐劇烈發展，請注意瘋狗浪與視線驟降！"
+            } else if (pressureDrop >= 1.5) {
+                _weatherAlert.value = "🌦️ 天氣轉變中：氣壓持續下滑，周圍海域風浪可能逐漸增強。"
+            } else {
+                _weatherAlert.value = "☀️ 氣壓穩定・天氣正常"
             }
         }
     }
@@ -303,6 +360,14 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
     }
 
     /**
+     * 🎯 畫面座標更新時呼叫，自動辨識並更新當前 AI 模式 (陸地/海上)
+     */
+    fun updateLocationAndDetectMode(lat: Double, lng: Double) {
+        val mode = detectEnvironment(lat, lng)
+        _currentMode.value = mode
+    }
+
+    /**
      * 智慧全地形路徑規劃 (Android 端使用)
      */
     fun planSmartRoute(
@@ -348,7 +413,13 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
                             val C = GisGeometryUtils.LatLng(pt1[1], pt1[0])
                             val D = GisGeometryUtils.LatLng(pt2[1], pt2[0])
 
-                            if (GisGeometryUtils.isSegmentsIntersect(currentLatLng, predictedLatLng, C, D)) {
+                            if (GisGeometryUtils.isSegmentsIntersect(
+                                    currentLatLng,
+                                    predictedLatLng,
+                                    C,
+                                    D
+                                )
+                            ) {
                                 hasCollisionRisk = true
                                 dangerousWindFarmName = name
                                 break
@@ -361,7 +432,8 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
 
         // 即時灌入水管（Android Compose 畫面可以直接監聽 collisionAlert）
         if (hasCollisionRisk) {
-            _collisionAlert.value = "⚠️ 碰撞危機！預計 3 分鐘內將穿越 [${dangerousWindFarmName}] 邊界，請即刻修正航向！"
+            _collisionAlert.value =
+                "⚠️ 碰撞危機！預計 3 分鐘內將穿越 [${dangerousWindFarmName}] 邊界，請即刻修正航向！"
         } else {
             _collisionAlert.value = null
         }
@@ -372,6 +444,7 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
                 println("🌊 AI 偵測：目前處於海域，啟用大圓直線導航")
                 listOf(Pair(currentLat, currentLng), Pair(targetLat, targetLng))
             }
+
             NavigationMode.LAND -> {
                 println("🚗 AI 偵測：目前處於陸地，啟用路網導航架構")
                 listOf(Pair(currentLat, currentLng), Pair(targetLat, targetLng))
@@ -436,7 +509,13 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
                             val C = GisGeometryUtils.LatLng(pt1[1], pt1[0])
                             val D = GisGeometryUtils.LatLng(pt2[1], pt2[0])
 
-                            if (GisGeometryUtils.isSegmentsIntersect(currentLatLng, predictedLatLng, C, D)) {
+                            if (GisGeometryUtils.isSegmentsIntersect(
+                                    currentLatLng,
+                                    predictedLatLng,
+                                    C,
+                                    D
+                                )
+                            ) {
                                 hasCollisionRisk = true
                                 dangerousWindFarmName = name
                                 break
@@ -449,7 +528,8 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
 
         // 根據運算結果，即時把警報灌入水管通知 iOS UI
         if (hasCollisionRisk) {
-            _collisionAlert.value = "⚠️ 碰撞危機！預計 3 分鐘內將穿越 [${dangerousWindFarmName}] 邊界，請即刻修正航向！"
+            _collisionAlert.value =
+                "⚠️ 碰撞危機！預計 3 分鐘內將穿越 [${dangerousWindFarmName}] 邊界，請即刻修正航向！"
         } else {
             _collisionAlert.value = null
         }
@@ -467,9 +547,17 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
     }
 
     /**
-     * 🎯 恢復正常航行：重置狀態並清空緩衝器
+     * 🎯 模擬氣壓驟降：更新氣象預警狀態
+     */
+    fun simulateBarometerDrop() {
+        _weatherAlert.value = "⚠️ 暴風雨告警：氣壓急遽驟降 (3.5 hPa)！海上對流恐劇烈發展，請注意瘋狗浪與視線驟降！"
+    }
+
+    /**
+     * 🎯 恢復正常：重置航行動態與天氣預警狀態，並清空緩衝器
      */
     fun resetAnomaly(lat: Double, lng: Double) {
         _anomalyStatus.value = "正常航行"
+        _weatherAlert.value = "☀️ 氣壓穩定・天氣正常"
     }
 }

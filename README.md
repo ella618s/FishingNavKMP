@@ -16,8 +16,8 @@
 
 * **跨平台資料源同步 (Single Source of Truth)**：為解決 Android 原生 View 與 Compose 狀態不同步的問題，將資料重心移至 `SharedViewModel`，透過 `StateFlow` 強制觸發 `AndroidView` 的 `update` 區塊，實現「一處修改，兩端同步」。
 * **地圖互動 UI 優化 (Custom Marker Interaction)**：
-    * 成功阻斷 OSMDroid 預設的 InfoWindow 彈窗，改以 Compose `AlertDialog` 實作自定義改名邏輯。
-    * 實作「雙擊觸發」機制：點選標記進入導航模式，再次點選則開啟改名視窗，優化觸控體驗。
+  * 成功阻斷 OSMDroid 預設的 InfoWindow 彈窗，改以 Compose `AlertDialog` 實作自定義改名邏輯。
+  * 實作「雙擊觸發」機制：點選標記進入導航模式，再次點選則開啟改名視窗，優化觸控體驗。
 * **異步 UI 衝突修復 (WindowLeaked)**：解決了 `downloadAreaAsync` 背景下載時 Dialog 生命週期崩潰問題。透過自定義 `CacheManagerCallback` 與 `CoroutineScope` 實作靜默下載模式。
 * **跨平台瓦片預載演算法**：在 `SharedViewModel` 中實作 Mercator 投影公式，將經緯度範圍精確轉換為瓦片座標 (X, Y)，並透過 Ktor 進行異步多線程下載。
 * **iOS 進度監聽與類型對接**：
@@ -26,18 +26,18 @@
 * **執行緒調度優化**：精確配置 `Dispatchers.Main` 與 `Dispatchers.IO` 的切換，確保下載任務與 UI 提示（Toast/Dialog）在正確執行緒運作。
 * **高效能地圖渲染**：透過 `removeAll` 邏輯優化 `update` 區塊，避免 Compose 重複渲染導致的標記重疊與記憶體洩漏。
 * **自動 GPS 定位智慧路網辨識 (Smart Route Auto-Detection)**：
-* 實現「App 啟動即時偵測」與「座標變更動態觸發」核心機制。
-* 當系統抓取到第一筆 GPS 或位置發生改變時，自動將經緯度送入 KMP `SharedViewModel` 運算，擺脫傳統必須依賴點擊畫線才能觸發的限制。
-* 透過跨平台 `StateFlow` 監聽，讓 UI 層能即時接收狀態推播，在「陸地路網模式 (LAND)」與「海域直線模式 (SEA)」之間進行流暢無縫的動態切換。
+  * 實現「App 啟動即時偵測」與「座標變更動態觸發」核心機制。
+  * 當系統抓取到第一筆 GPS 或位置發生改變時，自動將經緯度送入 KMP `SharedViewModel` 運算，擺脫傳統必須依賴點擊畫線才能觸發的限制。
+  * 透過跨平台 `StateFlow` 監聽，讓 UI 層能即時接收狀態推播，在「陸地路網模式 (LAND)」與「海域直線模式 (SEA)」之間進行流暢無縫的動態切換。
 * **智慧地理圍欄防撞 (Geofencing Proximity Alert)**：
   * **核心邏輯**：基於 KMP 共享層的 `GisGeometryUtils`，實作了「未來航跡預測演算法」。
   * **運作機制**：透過 `predictFutureLocation` 預測船隻未來 3 分鐘內的移動向量，並與風場 GeoJSON 邊界進行線段交叉檢測 (Intersection Detection)。
   * **跨平台同步**：Android 端透過 `MainActivity` 的 `LocationListener` 即時餵入航速與航向；iOS 端則透過 `CLLocationManager` 同步至 `SharedViewModel`。
   * **主動告警**：一旦判定航線將穿越風場，透過 `StateFlow` 即時觸發 UI 紅色警報，有效提升夜間與霧天的航海安全。
-* **AI 航行異常與碰撞偵測機制 (AI Navigation Anomaly & Collision Detection)**：
-  * **雙端同步面板**：在 KMP 共享層利用 `SharedViewModel` 維持單一異常狀態水管（`anomalyStatus`），Android 端以 Jetpack Compose 右側按鈕群頂層的膠囊字卡呈現，iOS 端以 SwiftUI 懸浮字卡對齊，實現雙端即時聯動。
-  * **動態視覺回饋**：當底層機器學習模型預測分數過高或觸發警告（狀態含 `⚠️`）時，雙端 UI 自動同步切換為微透紅底紅字提示，提供即時、直覺的視覺告警。
-  * **雙向模擬與控制機制**：於 KMP 核心 `SharedViewModel` 補強 `simulateAnomaly` 與 `resetAnomaly` 跨平台方法。成功打通由原生 UI 層（Compose 按鈕 / SwiftUI Button）反向灌入極端洋流異常訊號的控制鏈，支援雙端手動觸發動態異常與重置緩衝狀態。
+* **AI 航行異常與氣象驟降預警機制 (AI Anomaly & Weather Alert System)**：
+  * **雙端同步面板**：在 KMP 共享層利用 `SharedViewModel` 維持單一異常狀態水管（`anomalyStatus`）與離線天氣預警水管（`weatherAlert`），實現 Android 與 iOS 雙端即時狀態連動。
+  * **離線氣壓時序分析**：實作 `updateBarometerPressure` 氣壓變率演算法，自動維護 3 小時內的離線氣壓歷史快照。當偵測到氣壓急遽驟降（如 >3.0 hPa）時，自動觸發暴風雨/瘋狗浪預警警報。
+  * **雙向模擬與完全重置機制**：於 KMP 核心注入 `simulateAnomaly`、`simulateBarometerDrop` 與 `resetAnomaly` 方法。成功打通 Native UI（Compose / SwiftUI）動態模擬氣壓驟降與極端洋流的控制鏈，並可一鍵重置滑動視窗緩衝器與告警 UI 狀態。
 
 ## 📱 互動式 GIS 成果展示
 * **動態標籤渲染**：解析政府 Open Data 之風場區域 (GeoJSON)，實作半透明多邊形與標籤化渲染。
@@ -64,7 +64,8 @@
 - [x] iOS 端離線下載 UI (ProgressView) 與邏輯對接
 - [x] 自動 GPS 定位智慧路網辨識與即時模式動態切換 (LAND/SEA)
 - [x] AI 航行異常偵測狀態水管與 Android/iOS 雙端 UI 燈號即時連動
-- [x] 海域異常狀態雙向模擬控制水管與雙端 UI 響應式重置功能
+- [x] 離線氣壓時序趨勢分析與暴風雨驟降告警機制
+- [x] 氣體與海域異常狀態雙向模擬控制水管與雙端 UI 一鍵響應式重置
 
 ## 📄 授權與聲明 (License & Disclaimer)
 * **版權所有**：© 2026 Ella Liu. All rights reserved.

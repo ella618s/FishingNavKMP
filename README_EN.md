@@ -34,10 +34,10 @@ We successfully resolved critical challenges regarding OSMDroid stability in Com
   * **Mechanism**: Uses `predictFutureLocation` to calculate the vessel's movement vector over the next 3 minutes, performing line-segment intersection detection against offshore wind farm boundaries.
   * **Cross-Platform Synchronization**: Android utilizes `MainActivity`'s `LocationListener` to feed speed and heading data; iOS leverages `CLLocationManager` to sync with the `SharedViewModel`.
   * **Active Alerting**: Automatically triggers real-time UI alerts via `StateFlow` when a collision trajectory is detected, significantly enhancing safety during night or foggy conditions.
-* **AI Navigation Anomaly & Collision Detection Mechanism**:
-  * **Cross-Platform Unified Dashboard**: Utilizes `SharedViewModel` in the KMP shared layer to maintain a single source of truth for the anomaly status flow (`anomalyStatus`). The state is seamlessly rendered on Android using a Jetpack Compose capsule card atop the right-side button group, and matched symmetrically on iOS via SwiftUI.
-  * **Dynamic Visual Feedback**: When the underlying ML model score spikes or triggers an alert (status contains `⚠️`), both platform UIs instantly and dynamically pivot to a semi-transparent red background with bold red typography for real-time, intuitive cognitive alerting.
-  * **Bidirectional Simulation & Control**: Implemented `simulateAnomaly` and `resetAnomaly` methods in the KMP `SharedViewModel`. It enables reactive reverse-triggering from native UI layers (Jetpack Compose / SwiftUI buttons), allowing developers or users to simulate extreme current anomalies and clear cache buffers on the fly.
+* **AI Navigation Anomaly & Offline Weather Alert System**:
+  * **Cross-Platform Unified Dashboard**: Utilizes `SharedViewModel` in the KMP shared layer to maintain single sources of truth for anomaly status (`anomalyStatus`) and offline weather alerts (`weatherAlert`), delivering real-time dual-platform state binding.
+  * **Offline Barometric Analysis**: Implemented `updateBarometerPressure` to maintain a 3-hour history snapshot. Automatically calculates pressure drop rates and triggers storm/rogue wave alerts when sudden drops (>3.0 hPa) occur offline.
+  * **Bidirectional Simulation & Full Reset Pipeline**: Embedded `simulateAnomaly`, `simulateBarometerDrop`, and `resetAnomaly` methods in the KMP core. Enables native UI layers (Jetpack Compose / SwiftUI) to dynamically simulate pressure drops or ocean anomalies and clear sliding window buffers with a single click.
 
 
 ## 📱 Interactive GIS Showcase
@@ -65,7 +65,8 @@ We successfully resolved critical challenges regarding OSMDroid stability in Com
 - [x] iOS offline download UI (ProgressView) & logic binding
 - [x] Automatic GPS Smart Route Detection & dynamic mode switching (LAND/SEA)
 - [x] AI Navigation Anomaly Detection status flow & real-time Android/iOS dual-platform UI indicator binding
-- [x] Bidirectional simulation pipeline for marine anomalies with reactive dual-platform UI state resetting
+- [x] Offline barometric tendency analysis & sudden pressure drop storm alert system
+- [x] Bidirectional simulation pipeline for marine & weather anomalies with reactive dual-platform UI state resetting
 
 ## 📄 License & Disclaimer
 * **Copyright**: © 2026 Ella Liu. All rights reserved.

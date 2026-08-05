@@ -5,33 +5,34 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.Modifier
 import androidx.compose.material3.*
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 
 @Composable
-fun App(viewModel: SharedViewModel) {// 接收傳入的 viewModel
+fun App(viewModel: SharedViewModel) {
     var markerList by remember { mutableStateOf(MarkerStorage.loadMarkers()) }
     var selectedMarker by remember { mutableStateOf<CustomMarker?>(null) }
     var showBottomInfo by remember { mutableStateOf(false) }
     var userLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+
     val markers by viewModel.markerList.collectAsState()
     val currentMode by viewModel.currentMode.collectAsState()
-    val collisionAlert by viewModel.collisionAlert.collectAsState() // 監聽警報水管
-    val anomalyStatus by viewModel.anomalyStatus.collectAsState() // 🎯 【精確新增這行：監聽 AI 異常狀態水管】
+    val collisionAlert by viewModel.collisionAlert.collectAsState()
+    val anomalyStatus by viewModel.anomalyStatus.collectAsState()
+    val weatherAlert by viewModel.weatherAlert.collectAsState()
 
-    // 使用 remember 監控 selectedMarker，當它變為 null 時，distText 也會消失
+    // 計算與選定點位的距離
     val distText = remember(selectedMarker, userLocation) {
         if (selectedMarker != null && userLocation != null) {
-            // 這裡傳入：使用者緯度, 使用者經度, 目標緯度, 目標經度
             LocationUtils.calculateDistance(
                 userLocation!!.first,
                 userLocation!!.second,
@@ -43,15 +44,9 @@ fun App(viewModel: SharedViewModel) {// 接收傳入的 viewModel
         }
     }
 
-    // 🎯 更新名稱的邏輯
+    // 更新名稱邏輯
     val onUpdateMarkerName: (CustomMarker, String) -> Unit = { marker, newName ->
-        val newList = markerList.map {
-            if (it.latitude == marker.latitude && it.longitude == marker.longitude) {
-                it.copy(name = newName) // 假設你的 CustomMarker 是 data class
-            } else it
-        }
         MarkerStorage.saveMarkers(markers.map { CustomMarker(it.lat, it.lng, it.name) })
-        // 如果正在導航的這個點改名了，同步更新選中的狀態
         if (selectedMarker?.latitude == marker.latitude && selectedMarker?.longitude == marker.longitude) {
             selectedMarker = selectedMarker?.copy(name = newName)
         }
@@ -63,14 +58,10 @@ fun App(viewModel: SharedViewModel) {// 接收傳入的 viewModel
             initialCenter = Pair(25.0330, 121.5654),
             markerList = markers.map { CustomMarker(it.lat, it.lng, it.name) },
             selectedMarker = selectedMarker,
+            currentMode = currentMode,
             onMapClick = { lat, lng, name ->
                 viewModel.saveSpot(lat, lng, name)
-                val updatedList =
-                    markers.map { CustomMarker(it.lat, it.lng, it.name) } + CustomMarker(
-                        lat,
-                        lng,
-                        name
-                    )
+                val updatedList = markers.map { CustomMarker(it.lat, it.lng, it.name) } + CustomMarker(lat, lng, name)
                 MarkerStorage.saveMarkers(updatedList)
             },
             onMarkerClick = { marker ->
@@ -79,20 +70,20 @@ fun App(viewModel: SharedViewModel) {// 接收傳入的 viewModel
             },
             onLocationUpdate = { lat, lon ->
                 userLocation = Pair(lat, lon)
+                viewModel.updateLocationAndDetectMode(lat, lon)
             },
             onRenameClick = onUpdateMarkerName,
-
             onClearAllClick = {
                 viewModel.clearAllSpots()
                 selectedMarker = null
                 showBottomInfo = false
             },
-            currentMode = currentMode,
             anomalyStatus = anomalyStatus,
+            weatherAlert = weatherAlert,
 
-            // 🚀 一鍵注入異常數據的 lambda 連接
+            // 1. 模擬暴流異常
             onSimulateAnomaly = { lat, lng ->
-                // 模擬極端異常狀況：船隻速度突變為 45 節（超速），且航向在一秒內暴轉，強迫擠滿滑動視窗觸發預測
+                viewModel.simulateAnomaly(lat, lng) // 或者繼續用 repeat 塞極端資料
                 repeat(16) {
                     viewModel.updateShipStatus(
                         speedMps = 23.0,
@@ -103,9 +94,14 @@ fun App(viewModel: SharedViewModel) {// 接收傳入的 viewModel
                 }
             },
 
-            // 🚀 恢復正常數據的 lambda 連接
+            // 2. 專屬氣壓驟降的觸發事件
+            onSimulateBarometerDrop = {
+                viewModel.simulateBarometerDrop()
+            },
+
+            // 3. 🎯 恢復正常數據 (這一步呼叫 resetAnomaly 就能清空狀態與預警)
             onResetAnomaly = { lat, lng ->
-                // 恢復正常平穩基線（約 10 節速度）
+                viewModel.resetAnomaly(lat, lng)
                 repeat(16) {
                     viewModel.updateShipStatus(
                         speedMps = 5.14,
@@ -116,27 +112,31 @@ fun App(viewModel: SharedViewModel) {// 接收傳入的 viewModel
                 }
             },
 
+            // 4. 智慧導航規劃
             planRoute = { myLat, myLng, targetLat, targetLng, targetName ->
                 viewModel.planSmartRoute(myLat, myLng, targetLat, targetLng, targetName)
             }
         )
 
-        // 顯示警報
+        // 🚨 顯示碰撞警報 (保留在 App 層高優先級提示)
         collisionAlert?.let { alertMessage ->
             Surface(
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 80.dp),
-                color = Color.Red.copy(alpha = 0.9f)
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 70.dp),
+                color = Color.Red.copy(alpha = 0.9f),
+                shape = RoundedCornerShape(12.dp)
             ) {
                 Text(text = alertMessage, color = Color.White, modifier = Modifier.padding(16.dp))
             }
         }
 
-        // 🎯 底部資訊視窗 (白框)
+        // 底部資訊視窗 (點擊 Marker 時顯示)
         if (selectedMarker != null && showBottomInfo) {
             Card(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(start = 16.dp, end = 16.dp, bottom = 120.dp),
+                    .padding(start = 16.dp, end = 16.dp, bottom = 90.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
                 Row(
@@ -153,11 +153,10 @@ fun App(viewModel: SharedViewModel) {// 接收傳入的 viewModel
     }
 }
 
-// 🎯 在 App.kt 檔案最下方，確保這是整個專案唯一的 MapButton
 @Composable
 fun MapButton(
     text: String,
-    color: androidx.compose.ui.graphics.Color,
+    color: Color,
     onClick: () -> Unit
 ) {
     Button(
@@ -165,6 +164,6 @@ fun MapButton(
         colors = ButtonDefaults.buttonColors(containerColor = color),
         shape = RoundedCornerShape(24.dp)
     ) {
-        Text(text = text, color = androidx.compose.ui.graphics.Color.White)
+        Text(text = text, color = Color.White)
     }
 }

@@ -33,7 +33,9 @@ actual fun FishingMapView(
     onRenameClick: (CustomMarker, String) -> Unit,
     onClearAllClick: () -> Unit,
     anomalyStatus: String,
+    weatherAlert: String, // 🎯接收天氣預警狀態參數
     onSimulateAnomaly: (Double, Double) -> Unit,
+    onSimulateBarometerDrop: () -> Unit, // 👈 🎯 新增：專屬氣壓驟降的事件
     onResetAnomaly: (Double, Double) -> Unit,
     planRoute: (Double, Double, Double, Double, String) -> List<Pair<Double, Double>>
 ) {

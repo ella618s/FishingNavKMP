@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var showOfflineAlert = false
     @State private var mapView: MKMapView? = nil
     @State private var aiModeText: String = "🌊 AI 辨識：海域直線模式"  // 🎯 宣告一個用來即時刷新 UI 的變數，預設為海域模式
+    @State private var isSimulatingPressureDrop = false // 🎯 紀錄是否正在模擬氣壓驟降
     
     init() {
         let bridge = MapViewModel()
@@ -42,19 +43,23 @@ struct ContentView: View {
                     .transition(.move(edge: .top))
             }
             
-            // 🎯 把這個浮動標籤文字元件，加在你的畫面上方（例如放進 ZStack 的最上層）
-            VStack {
+            // 🎯 畫面頂部：AI 模式 + 天氣預警 (垂直乾淨排列)
+            VStack(spacing: 6) {
+                // 黑色 AI 陸海域辨識膠囊
                 Text(aiModeText)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.black.opacity(0.7))
-                    .cornerRadius(8)
-                    .padding(.top, 10) // 讓它漂亮地浮在畫面上方
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(Color.black.opacity(0.75))
+                    .cornerRadius(16)
                 
-                Spacer() // 把標籤推到頂部
+                // 離線氣象預警膠囊 (放在 AI 膠囊正下方，不再重疊)
+                WeatherAlertCapsule(alertText: myKmpBridge.weatherAlertText)
+                
+                Spacer()
             }
+            .padding(.top, 15) // 避開 iPhone 上方動態島/時間區
             
             if viewModel.downloadProgress > 0 && viewModel.downloadProgress < 1 {
                 VStack {
@@ -75,7 +80,6 @@ struct ContentView: View {
             VStack {
                 HStack {
                     if isNavigating {
-                        // 這裡放你的距離框元件
                         VStack(alignment: .leading, spacing: 5) {
                             HStack(spacing: 4) {
                                 Image(systemName: "lines.measurement.horizontal")
@@ -89,15 +93,14 @@ struct ContentView: View {
                                 .foregroundColor(.green)
                         }
                         .padding()
-                        .background(Color.black.opacity(0.8))
+                        .background(Color.black.opacity(0.85))
                         .cornerRadius(12)
-                        .padding(.leading, 15) // 與邊緣保持距離
-                        .padding(.top, 60)    // ⚠️ 重要：避開上方劉海 (Notch) 或狀態列
+                        .padding(.leading, 15)
+                        .padding(.top, 120) // 🚀 關鍵：從 60 稍微下調到 120，不再擋到紅框！
                     }
-                    
-                    Spacer() // 將左邊的內容往左推
+                    Spacer()
                 }
-                Spacer() // 將上方的內容往上推
+                Spacer()
             }
         
             HStack {
@@ -188,6 +191,24 @@ struct ContentView: View {
                         viewModel.showDistanceBottomInfo = false
                     }
                     
+                    // 💥 測試模擬氣壓驟降
+                    MapControlButton(
+                        title: isSimulatingPressureDrop ? "恢復正常氣壓" : "模擬氣壓驟降",
+                        color: isSimulatingPressureDrop ? .green : .orange
+                    ) {
+                        if isSimulatingPressureDrop {
+                            // 恢復正常氣壓（連續寫入穩定氣壓，讓 sharedVM 判定氣壓平穩）
+                            myKmpBridge.sharedVM.updateBarometerPressure(pressureHpa: 1013.2)
+                            myKmpBridge.sharedVM.updateBarometerPressure(pressureHpa: 1013.2)
+                            isSimulatingPressureDrop = false
+                        } else {
+                            // 模擬驟降（1013.2 -> 1009.7 觸發暴風雨告警）
+                            myKmpBridge.sharedVM.updateBarometerPressure(pressureHpa: 1013.2)
+                            myKmpBridge.sharedVM.updateBarometerPressure(pressureHpa: 1009.7)
+                            isSimulatingPressureDrop = true
+                        }
+                    }
+                    
                     MapControlButton(title: "預載此區") {
                         if let mv = self.mapView {
                             let region = mv.region
@@ -210,7 +231,7 @@ struct ContentView: View {
                     Spacer()
                 }
                 .padding(.trailing, 10)
-                .padding(.top, 60)
+                .padding(.top, 120)
             }
             .alert("新增釣點", isPresented: $viewModel.showAlert) {
                 // 在 Alert 裡面加入輸入框
@@ -460,5 +481,34 @@ class IOSMapViewModel: ObservableObject {
         self.currentRouteDistance = formattedDistance
         self.selectedSpotNameForDistance = name
         self.showDistanceBottomInfo = true // 點擊時同步彈出下方視窗
+    }
+    
+}
+
+// 🎯 離線氣象天氣預警膠囊元件
+struct WeatherAlertCapsule: View {
+    let alertText: String
+    
+    var isWarning: Bool {
+        alertText.contains("⚠️") || alertText.contains("🌦️")
+    }
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(alertText)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(isWarning ? .yellow : .white)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(
+            isWarning
+            ? Color.red.opacity(0.85)
+            : Color.black.opacity(0.65)
+        )
+        .cornerRadius(20)
+        .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+        .animation(.easeInOut, value: alertText)
     }
 }
