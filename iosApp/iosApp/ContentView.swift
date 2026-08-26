@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var mapView: MKMapView? = nil
     @State private var aiModeText: String = "🌊 AI 辨識：海域直線模式"  // 🎯 宣告一個用來即時刷新 UI 的變數，預設為海域模式
     @State private var isSimulatingPressureDrop = false // 🎯 紀錄是否正在模擬氣壓驟降
+    @State private var showJobsSheet = false // 🎯 控制雲端 API 彈窗開關
     
     init() {
         let bridge = MapViewModel()
@@ -228,6 +229,12 @@ struct ContentView: View {
                             self.showOfflineAlert = true
                         }
                     }
+                    
+                    // 🎯 觸發雲端 API 測試按鈕
+                    MapControlButton(title: "☁️ 雲端 API", color: Color(red: 0, green: 0.44, blue: 0.95)) {
+                        myKmpBridge.fetchCloudJobs()
+                        showJobsSheet = true
+                    }
                     Spacer()
                 }
                 .padding(.trailing, 10)
@@ -307,6 +314,36 @@ struct ContentView: View {
                     print("=== 🍏 iOS 成功接收推播：目前導航狀態更新為 -> [\(modeString)] ===")
                 }
             }
+        }
+        .sheet(isPresented: $showJobsSheet) {
+            VStack(spacing: 16) {
+                Text("Render 雲端職缺資料 (Go Backend)")
+                    .font(.headline)
+                    .padding(.top)
+                
+                if myKmpBridge.isLoadingJobs {
+                    ProgressView("⏳ 正在連線 Render API...")
+                        .padding()
+                } else if myKmpBridge.jobsList.isEmpty {
+                    Text("⚠️ 無資料或連線失敗")
+                        .foregroundColor(.gray)
+                        .padding()
+                } else {
+                    List(myKmpBridge.jobsList, id: \.self) { job in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("🏢 公司: \(job.company)")
+                            Text("💼 職缺: \(job.title)").bold()
+                            Text("📍 地點: \(job.location)").font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                }
+                
+                Button("關閉") {
+                    showJobsSheet = false
+                }
+                .padding(.bottom)
+            }
+            .presentationDetents([.medium, .large])
         }
         .task {
             await viewModel.fetchWindFarms()

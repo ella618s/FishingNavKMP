@@ -1,6 +1,7 @@
 package com.example.fishingmapkmp
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -24,11 +25,18 @@ fun App(viewModel: SharedViewModel) {
     var showBottomInfo by remember { mutableStateOf(false) }
     var userLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
 
+    // 控制「雲端資料對話框」是否顯示的狀態變數
+    var showJobsDialog by remember { mutableStateOf(false) }
+
     val markers by viewModel.markerList.collectAsState()
     val currentMode by viewModel.currentMode.collectAsState()
     val collisionAlert by viewModel.collisionAlert.collectAsState()
     val anomalyStatus by viewModel.anomalyStatus.collectAsState()
     val weatherAlert by viewModel.weatherAlert.collectAsState()
+
+    // 訂閱 SharedViewModel 中的 API 狀態 (資料與載入中狀態)
+    val cloudJobs by viewModel.jobsList.collectAsState()
+    val isLoadingJobs by viewModel.isLoadingJobs.collectAsState()
 
     // 計算與選定點位的距離
     val distText = remember(selectedMarker, userLocation) {
@@ -83,7 +91,7 @@ fun App(viewModel: SharedViewModel) {
 
             // 1. 模擬暴流異常
             onSimulateAnomaly = { lat, lng ->
-                viewModel.simulateAnomaly(lat, lng) // 或者繼續用 repeat 塞極端資料
+                viewModel.simulateAnomaly(lat, lng)
                 repeat(16) {
                     viewModel.updateShipStatus(
                         speedMps = 23.0,
@@ -99,7 +107,7 @@ fun App(viewModel: SharedViewModel) {
                 viewModel.simulateBarometerDrop()
             },
 
-            // 3. 🎯 恢復正常數據 (這一步呼叫 resetAnomaly 就能清空狀態與預警)
+            // 3. 恢復正常數據
             onResetAnomaly = { lat, lng ->
                 viewModel.resetAnomaly(lat, lng)
                 repeat(16) {
@@ -129,6 +137,50 @@ fun App(viewModel: SharedViewModel) {
             ) {
                 Text(text = alertMessage, color = Color.White, modifier = Modifier.padding(16.dp))
             }
+        }
+
+        // 測試 API 請求的按鈕
+        Button(
+            onClick = {
+                viewModel.fetchCloudJobs()
+                showJobsDialog = true
+            },
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 16.dp, bottom = 90.dp), // 留出底欄邊距
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0070F3)),
+            shape = RoundedCornerShape(24.dp)
+        ) {
+            Text("☁️ 雲端 API", color = Color.White)
+        }
+
+        // 彈出視窗，用來呈現 API 回傳結果
+        if (showJobsDialog) {
+            AlertDialog(
+                onDismissRequest = { showJobsDialog = false },
+                title = { Text("Render 雲端職缺資料 (Go Backend)") },
+                text = {
+                    if (isLoadingJobs) {
+                        Text("⏳ 正在連線 Render API 撈取資料...")
+                    } else if (cloudJobs.isEmpty()) {
+                        Text("⚠️ 無資料或連線失敗，請確認網路與 Server 狀態。")
+                    } else {
+                        Column {
+                            cloudJobs.forEach { job ->
+                                Text("🏢 公司: ${job.company}")
+                                Text("💼 職缺: ${job.title}")
+                                Text("📍 地點: ${job.location}")
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showJobsDialog = false }) {
+                        Text("關閉")
+                    }
+                }
+            )
         }
 
         // 底部資訊視窗 (點擊 Marker 時顯示)

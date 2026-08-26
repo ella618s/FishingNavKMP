@@ -71,6 +71,34 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
     private val _weatherAlert = MutableStateFlow<String>("☀️ 氣壓穩定・天氣正常")
     val weatherAlert: StateFlow<String> = _weatherAlert.asStateFlow()
 
+    private val jobApiClient = JobApiClient()
+
+    // 雲端職缺資料 StateFlow
+    private val _jobsList = MutableStateFlow<List<JobItem>>(emptyList())
+    val jobsList: StateFlow<List<JobItem>> = _jobsList.asStateFlow()
+
+    // 載入狀態 (可選)
+    private val _isLoadingJobs = MutableStateFlow(false)
+    val isLoadingJobs: StateFlow<Boolean> = _isLoadingJobs.asStateFlow()
+
+    /**
+     * 🎯 呼叫 Go + PostgreSQL 雲端 API 取得職缺資料
+     */
+    fun fetchCloudJobs() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                _isLoadingJobs.value = true
+                val response = jobApiClient.fetchJobs()
+                _jobsList.value = response.data
+                println("☁️ [API Success] 成功取得 ${response.data.size} 筆雲端職缺")
+            } catch (e: Exception) {
+                println("❌ [API Error] 串接失敗: ${e.message}")
+            } finally {
+                _isLoadingJobs.value = false
+            }
+        }
+    }
+
     // 🎯 提供給 iOS 監聽警報的水管橋樑
     fun watchCollisionAlert(onUpdate: (String?) -> Unit) {
         viewModelScope.launch {
@@ -559,5 +587,10 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
     fun resetAnomaly(lat: Double, lng: Double) {
         _anomalyStatus.value = "正常航行"
         _weatherAlert.value = "☀️ 氣壓穩定・天氣正常"
+    }
+
+    // 供 Swift 輕鬆調用的普通變數取得方法
+    fun getJobsListForIOS(): List<JobItem> {
+        return _jobsList.value
     }
 }

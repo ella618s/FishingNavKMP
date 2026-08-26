@@ -6,10 +6,8 @@ import CoreLocation
 class MapViewModel: NSObject, ObservableObject, CLLocationManagerDelegate { // 🎯 繼承 NSObject 與定位委派
     // 儲存從政府 API 抓回來的風場資料
     @Published var windFarmData: WindFarmGeoJson? = nil
-    
     // 🎯 儲存目前最新 GPS 位置
     @Published var currentCoordinate: CLLocationCoordinate2D? = nil
-    
     // 儲存是否正在轉圈圈
     @Published var isLoading: Bool = false
     // 🎯 先建立 detector，再注入進 sharedVM
@@ -22,6 +20,9 @@ class MapViewModel: NSObject, ObservableObject, CLLocationManagerDelegate { // �
     @Published var weatherAlertText: String = "☀️ 氣壓穩定・天氣正常"
     // 🎯 建立純 Swift 的定位管理器
     private let locationManager = CLLocationManager()
+    // 🎯 宣告為 [JobItem]
+    @Published var jobsList: [JobItem] = []
+    @Published var isLoadingJobs: Bool = false
     
     override init() {
         // 🎯 在 super.init() 之前初始化 KMP 類別
@@ -65,6 +66,30 @@ class MapViewModel: NSObject, ObservableObject, CLLocationManagerDelegate { // �
             // 假設你 KMP 的 collisionAlert 是透過某種方式暴露
             // 如果你 KMP 直接有一個 getter，直接賦值即可
             // 例如: self.collisionAlert = sharedVM.collisionAlert.value
+        }
+    }
+    
+    // 🎯 提供給 iOS UI 呼叫的 API 方法
+    func fetchCloudJobs() {
+        self.isLoadingJobs = true
+        // 呼叫 Kotlin SharedViewModel 的方法
+        self.sharedVM.fetchCloudJobs()
+        
+        Task {
+            // 等待 Kotlin 異步 API 請求完成
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            
+            // 🎯  從 Kotlin StateFlow 取出 List 並轉型
+            if let array = self.sharedVM.jobsList.value as? [JobItem] {
+                DispatchQueue.main.async {
+                    self.jobsList = array
+                    self.isLoadingJobs = false
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self.isLoadingJobs = false
+                }
+            }
         }
     }
     
