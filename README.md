@@ -1,30 +1,31 @@
-# FishingNav KMP - 離線航海導航系統
+# FishingNav KMP - 離線航海導航與雲端整合系統
 
-[English Version (英文版說明)] (./README_EN.md)
+[English Version (英文版說明)](./README_EN.md)
 
-本專案採用 **Kotlin Multiplatform (KMP)** 架構開發，專為漁船在海上無網路環境下的導航、漁標記錄與安全監控設計。
+本專案採用 **Kotlin Multiplatform (KMP)** 架構開發，專為漁船在海上無網路環境下的導航、漁標記錄、安全監控，以及岸上/雲端職缺數據整合設計。
 
 ## 🛠️ 技術亮點
-* **KMP 跨平台架構**：實現 Android/iOS 核心邏輯共享，包含地理座標計算與資料模型管理。
+* **KMP 跨平台架構**：實現 Android/iOS 核心邏輯共享，包含地理座標計算、資料模型管理與 API 資料串接。
 * **響應式狀態管理 (Compose + Flow)**：利用 `StateFlow` 結合 `collectAsState` 實現跨平台邏輯與 UI 的即時同步。
-* **跨平台網路層 (Ktor 2.3.12)**：統一處理跨平台 API 請求，搭配 `kotlinx-serialization` 進行 JSON 解析。
+* **跨平台網路層 (Ktor 2.3.12)**：統一處理跨平台 RESTful API 請求，搭配 `kotlinx-serialization` 進行 JSON 解析。
 * **離線地圖引擎 (OSMDroid)**：深度整合 Android 原生 OSMDroid 框架，支援本地快取與離線衛星圖資渲染。
 * **現代化 UI 實作**：全專案採用 Jetpack Compose 與 SwiftUI，具備流暢的互動體驗。
 
-## 🛠️ 核心技術突破 (Android 穩定性與架構整合、Android & iOS 跨平台整合)
-針對 OSMDroid 在 Compose 環境下的穩定性與 KMP 狀態同步，本專案成功解決以下挑戰：
+## 🛠️ 核心技術突破 (Android/iOS 跨平台與雲端 API 整合)
+針對 OSMDroid 在 Compose 環境下的穩定性、KMP 狀態同步與跨平台實體機適配，本專案成功解決以下挑戰：
 
-* **跨平台資料源同步 (Single Source of Truth)**：為解決 Android 原生 View 與 Compose 狀態不同步的問題，將資料重心移至 `SharedViewModel`，透過 `StateFlow` 強制觸發 `AndroidView` 的 `update` 區塊，實現「一處修改，兩端同步」。
+* **跨平台資料源同步 (Single Source of Truth)**：為解決原生 View 與 Compose/SwiftUI 狀態不同步的問題，將資料重心移至 `SharedViewModel`，透過 `StateFlow` 強制觸發 UI 更新，實現「一處修改，兩端同步」。
+* **Render 雲端 Go + PostgreSQL API 跨平台串接**：
+  * 使用 Ktor 在 `commonMain` 實作異步 RESTful 客戶端（`JobApiClient`），對接部署於 Render 的 Go Backend 與 PostgreSQL 雲端資料庫。
+  * 在 KMP 共享層處理 JSON 自動序列化 (`JobItem`)，讓 Android (Compose) 與 iOS (SwiftUI) 能以極低的成本共享雲端 API 存取邏輯。
+* **iOS 實體機 (Arm64) 編譯與類型對接**：
+  * 克服 Objective-C / Swift 與 Kotlin Native 泛型轉型的相容性問題，透過封裝 Helper 方法直接將 Kotlin 的 `List<JobItem>` 與 `StateFlow` 轉化為 Swift 原生型別。
+  * 完整適配 iOS 16+ `.presentationDetents` 彈窗與 SwiftUI 狀態監聽機制，確保在實體 iPhone 上順利編譯與發布。
 * **地圖互動 UI 優化 (Custom Marker Interaction)**：
   * 成功阻斷 OSMDroid 預設的 InfoWindow 彈窗，改以 Compose `AlertDialog` 實作自定義改名邏輯。
   * 實作「雙擊觸發」機制：點選標記進入導航模式，再次點選則開啟改名視窗，優化觸控體驗。
 * **異步 UI 衝突修復 (WindowLeaked)**：解決了 `downloadAreaAsync` 背景下載時 Dialog 生命週期崩潰問題。透過自定義 `CacheManagerCallback` 與 `CoroutineScope` 實作靜默下載模式。
 * **跨平台瓦片預載演算法**：在 `SharedViewModel` 中實作 Mercator 投影公式，將經緯度範圍精確轉換為瓦片座標 (X, Y)，並透過 Ktor 進行異步多線程下載。
-* **iOS 進度監聽與類型對接**：
-  * 解決 Kotlin `StateFlow` 與 Swift `AsyncSequence` 的不匹配問題，透過 Kotlin 端封裝 `watchProgress` 監聽器達成兩端進度同步。
-  * 成功處理 `KotlinIntRange` 與 Swift `ClosedRange` 的類型映射，確保 iOS 端能正確下達下載指令。
-* **執行緒調度優化**：精確配置 `Dispatchers.Main` 與 `Dispatchers.IO` 的切換，確保下載任務與 UI 提示（Toast/Dialog）在正確執行緒運作。
-* **高效能地圖渲染**：透過 `removeAll` 邏輯優化 `update` 區塊，避免 Compose 重複渲染導致的標記重疊與記憶體洩漏。
 * **自動 GPS 定位智慧路網辨識 (Smart Route Auto-Detection)**：
   * 實現「App 啟動即時偵測」與「座標變更動態觸發」核心機制。
   * 當系統抓取到第一筆 GPS 或位置發生改變時，自動將經緯度送入 KMP `SharedViewModel` 運算，擺脫傳統必須依賴點擊畫線才能觸發的限制。
@@ -39,10 +40,11 @@
   * **離線氣壓時序分析**：實作 `updateBarometerPressure` 氣壓變率演算法，自動維護 3 小時內的離線氣壓歷史快照。當偵測到氣壓急遽驟降（如 >3.0 hPa）時，自動觸發暴風雨/瘋狗浪預警警報。
   * **雙向模擬與完全重置機制**：於 KMP 核心注入 `simulateAnomaly`、`simulateBarometerDrop` 與 `resetAnomaly` 方法。成功打通 Native UI（Compose / SwiftUI）動態模擬氣壓驟降與極端洋流的控制鏈，並可一鍵重置滑動視窗緩衝器與告警 UI 狀態。
 
-## 📱 互動式 GIS 成果展示
+## 📱 互動式 GIS 與雲端功能展示
 * **動態標籤渲染**：解析政府 Open Data 之風場區域 (GeoJSON)，實作半透明多邊形與標籤化渲染。
 * **實時導航線繪製**：根據當前 GPS 位置與目標漁標，動態繪製 `Polyline` 並即時計算航行距離。
 * **衛星圖資下載**：支援特定區域之衛星圖資預載，確保海上完全無網路環境下仍有視覺背景參考。
+* **Render 雲端 API 整合**：點擊「☁️ 雲端 API」即可跨平台連線 Go + PostgreSQL 後端，即時載入並呈現場域職缺數據。
 
 ### Android 與 iOS 運行畫面
 | Android 衛星導航 | iOS 地圖模式 |
@@ -66,6 +68,8 @@
 - [x] AI 航行異常偵測狀態水管與 Android/iOS 雙端 UI 燈號即時連動
 - [x] 離線氣壓時序趨勢分析與暴風雨驟降告警機制
 - [x] 氣體與海域異常狀態雙向模擬控制水管與雙端 UI 一鍵響應式重置
+- [x] Render 雲端 Go/PostgreSQL RESTful API 跨平台連線與雙端 Sheet UI 呈現
+- [x] iOS 實體機 (Arm64) 構建、Framework 自動嵌入與適配
 
 ## 📄 授權與聲明 (License & Disclaimer)
 * **版權所有**：© 2026 Ella Liu. All rights reserved.

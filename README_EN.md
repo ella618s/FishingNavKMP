@@ -1,30 +1,31 @@
-# FishingNav KMP - Offline Marine Navigation System
+# FishingNav KMP - Offline Marine Navigation & Cloud Integration System
 
-[繁體中文版 (Traditional Chinese)] (./README.md)
+[繁體中文版 (Traditional Chinese)](./README.md)
 
-This project is developed using the **Kotlin Multiplatform (KMP)** architecture, specifically designed for fishing vessels to navigate, record fishing markers, and monitor safety in network-blind marine environments.
+This project is developed using the **Kotlin Multiplatform (KMP)** architecture, specifically designed for fishing vessels to navigate, record fishing markers, monitor safety in network-blind marine environments, and integrate cloud-based API services.
 
 ## 🛠️ Technical Highlights
-* **KMP Cross-Platform Architecture**: Achieves shared core logic between Android and iOS, including geographic coordinate calculations and data model management.
+* **KMP Cross-Platform Architecture**: Achieves shared core logic between Android and iOS, including geographic coordinate calculations, data model management, and cloud API interop.
 * **Responsive State Management (Compose + Flow)**: Utilizes `StateFlow` combined with `collectAsState` to achieve real-time synchronization between cross-platform logic and UI.
 * **Cross-Platform Network Layer (Ktor 2.3.12)**: Unifies cross-platform API requests, paired with `kotlinx-serialization` for JSON parsing.
 * **Offline Map Engine (OSMDroid)**: Deeply integrates the native OSMDroid framework on Android, supporting local caching and offline satellite tile rendering.
 * **Modern UI Implementation**: Fully implemented with Jetpack Compose and SwiftUI, providing a smooth interactive user experience.
 
-## 🛠️ Core Technical Breakthroughs (Android Stability & Cross-Platform Integration)
-We successfully resolved critical challenges regarding OSMDroid stability in Compose environments and KMP state synchronization:
+## 🛠️ Core Technical Breakthroughs (Android/iOS Cross-Platform & Cloud Integration)
+We successfully resolved critical challenges regarding OSMDroid stability in Compose environments, KMP state synchronization, and iOS physical device compatibility:
 
-* **Single Source of Truth (SSOT)**: To resolve state desynchronization between Android native Views and Compose, the data layer is centralized in the `SharedViewModel`. It forces updates via `StateFlow` to trigger the `AndroidView` update block, achieving "modify once, sync on both platforms."
+* **Single Source of Truth (SSOT)**: To resolve state desynchronization between native Views and Compose/SwiftUI, the data layer is centralized in the `SharedViewModel`. It forces UI updates via `StateFlow` to achieve "modify once, sync on both platforms."
+* **Render Cloud Go + PostgreSQL API Integration**:
+  * Implemented an asynchronous RESTful client (`JobApiClient`) using Ktor in `commonMain` to interface with a Go backend and PostgreSQL database hosted on Render.
+  * Handles JSON serialization (`JobItem`) in the KMP shared layer, allowing both Android (Compose) and iOS (SwiftUI) to share cloud data access logic seamlessly.
+* **iOS Physical Device (Arm64) Compilation & Interop**:
+  * Resolved generic type casting and interop issues between Swift and Kotlin Native by encapsulating helper methods for exposing `List<JobItem>` directly to Swift.
+  * Fully compliant with iOS 16+ `.presentationDetents` and SwiftUI state bindings for physical iPhone debugging and deployment.
 * **Map Interaction UI Optimization (Custom Marker Interaction)**:
   * Successfully blocked default OSMDroid InfoWindow popups, implementing custom renaming logic using Compose `AlertDialog`.
   * Implemented a "Double-Tap" mechanism: tap to enter navigation mode, double-tap to trigger the renaming window, optimizing the touch experience.
 * **Asynchronous UI Conflict Resolution (WindowLeaked)**: Resolved lifecycle crashes during background downloads by implementing a custom `CacheManagerCallback` and `CoroutineScope` for silent download modes.
 * **Cross-Platform Tile Preloading Algorithm**: Implemented the Mercator projection formula within `SharedViewModel` to precisely convert coordinate ranges into tile coordinates (X, Y), performing asynchronous multi-threaded downloads via Ktor.
-* **iOS Progress Monitoring & Type Interop**:
-  * Resolved mismatches between Kotlin `StateFlow` and Swift `AsyncSequence` by encapsulating a `watchProgress` listener in Kotlin to synchronize download progress across platforms.
-  * Successfully handled type mapping between `KotlinIntRange` and Swift `ClosedRange`, ensuring the iOS side can accurately trigger download commands.
-* **Thread Scheduling Optimization**: Precisely configured switching between `Dispatchers.Main` and `Dispatchers.IO` to ensure download tasks and UI notifications (Toast/Dialog) run on the correct threads.
-* **High-Performance Map Rendering**: Optimized the `update` block using `removeAll` logic, preventing marker overlapping and memory leaks caused by excessive Compose recomposition.
 * **Smart GPS Route Auto-Detection**:
   * Implemented "instant detection on app launch" and "dynamic trigger on coordinate change."
   * Automatically feeds real-time GPS coordinates into the KMP `SharedViewModel` for computation, eliminating the traditional dependency on manual point-and-click route drawing.
@@ -39,11 +40,11 @@ We successfully resolved critical challenges regarding OSMDroid stability in Com
   * **Offline Barometric Analysis**: Implemented `updateBarometerPressure` to maintain a 3-hour history snapshot. Automatically calculates pressure drop rates and triggers storm/rogue wave alerts when sudden drops (>3.0 hPa) occur offline.
   * **Bidirectional Simulation & Full Reset Pipeline**: Embedded `simulateAnomaly`, `simulateBarometerDrop`, and `resetAnomaly` methods in the KMP core. Enables native UI layers (Jetpack Compose / SwiftUI) to dynamically simulate pressure drops or ocean anomalies and clear sliding window buffers with a single click.
 
-
-## 📱 Interactive GIS Showcase
+## 📱 Interactive GIS & Cloud Showcase
 * **Dynamic Label Rendering**: Parses government Open Data for wind farm areas (GeoJSON), implementing semi-transparent polygon and label rendering.
 * **Real-time Navigation**: Dynamically draws a `Polyline` based on the user's current GPS position and the target marker, calculating sailing distance in real-time.
 * **Offline Map Support**: Supports pre-loading satellite imagery for specific regions, ensuring map visual references remain functional in total network-blind environments.
+* **Render Cloud API Integration**: Tapping "☁️ Cloud API" fetches live job board data from the Go + PostgreSQL backend across both platforms.
 
 ### Project Screenshots
 | Android Satellite Navigation | iOS Map Mode |
@@ -67,6 +68,8 @@ We successfully resolved critical challenges regarding OSMDroid stability in Com
 - [x] AI Navigation Anomaly Detection status flow & real-time Android/iOS dual-platform UI indicator binding
 - [x] Offline barometric tendency analysis & sudden pressure drop storm alert system
 - [x] Bidirectional simulation pipeline for marine & weather anomalies with reactive dual-platform UI state resetting
+- [x] Render Cloud Go/PostgreSQL RESTful API interop & cross-platform Sheet UI integration
+- [x] iOS physical device (Arm64) build support & framework auto-embed setup
 
 ## 📄 License & Disclaimer
 * **Copyright**: © 2026 Ella Liu. All rights reserved.
