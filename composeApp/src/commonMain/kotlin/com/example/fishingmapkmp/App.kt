@@ -1,7 +1,6 @@
 package com.example.fishingmapkmp
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -17,6 +16,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.height
 
 @Composable
 fun App(viewModel: SharedViewModel) {
@@ -37,6 +39,9 @@ fun App(viewModel: SharedViewModel) {
     // 訂閱 SharedViewModel 中的 API 狀態 (資料與載入中狀態)
     val cloudJobs by viewModel.jobsList.collectAsState()
     val isLoadingJobs by viewModel.isLoadingJobs.collectAsState()
+    // 將海象與漁場資料從 SharedViewModel 訂閱出來
+    val seaConditions by viewModel.seaConditions.collectAsState()
+    val communitySpots by viewModel.communitySpots.collectAsState()
 
     // 計算與選定點位的距離
     val distText = remember(selectedMarker, userLocation) {
@@ -158,19 +163,50 @@ fun App(viewModel: SharedViewModel) {
         if (showJobsDialog) {
             AlertDialog(
                 onDismissRequest = { showJobsDialog = false },
-                title = { Text("Render 雲端職缺資料 (Go Backend)") },
+                title = { Text("Render 雲端海象與漁場 (Go Backend)") },
                 text = {
                     if (isLoadingJobs) {
                         Text("⏳ 正在連線 Render API 撈取資料...")
-                    } else if (cloudJobs.isEmpty()) {
+                    } else if (seaConditions.isEmpty() && communitySpots.isEmpty()) {
                         Text("⚠️ 無資料或連線失敗，請確認網路與 Server 狀態。")
                     } else {
-                        Column {
-                            cloudJobs.forEach { job ->
-                                Text("🏢 公司: ${job.company}")
-                                Text("💼 職缺: ${job.title}")
-                                Text("📍 地點: ${job.location}")
-                                HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
+                        // 🎯 使用 LazyColumn + 指定固定高度，啟用順暢上下滑動
+                        LazyColumn(
+                            modifier = Modifier.height(350.dp)
+                        ) {
+                            // 🌊 區塊一：全台海象站 (完整顯示 31 筆)
+                            item {
+                                Text(
+                                    text = "🌊 全台海象站 (${seaConditions.size} 筆)",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.padding(bottom = 6.dp)
+                                )
+                            }
+                            items(seaConditions) { sea ->
+                                Text(
+                                    text = "📍 ${sea.locationName}: 風速 ${sea.windSpeedKts} kts / 浪高 ${sea.waveHeightM} m",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(vertical = 2.dp)
+                                )
+                            }
+                            // 分隔線
+                            item {
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+                            }
+                            // 📍 區塊二：社群漁場
+                            item {
+                                Text(
+                                    text = "📍 社群漁場 (${communitySpots.size} 筆)",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.padding(bottom = 6.dp)
+                                )
+                            }
+                            items(communitySpots) { spot ->
+                                Text(
+                                    text = "🎣 ${spot.name} (${spot.fishType}) - 水深 ${spot.depthMeters}m",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(vertical = 2.dp)
+                                )
                             }
                         }
                     }

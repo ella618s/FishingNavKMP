@@ -13,6 +13,8 @@ struct ContentView: View {
     @State private var aiModeText: String = "🌊 AI 辨識：海域直線模式"  // 🎯 宣告一個用來即時刷新 UI 的變數，預設為海域模式
     @State private var isSimulatingPressureDrop = false // 🎯 紀錄是否正在模擬氣壓驟降
     @State private var showJobsSheet = false // 🎯 控制雲端 API 彈窗開關
+    @State private var showCloudSheet = false
+    @State private var selectedTab = 0 // 0: 海象, 1: 社群漁標
     
     init() {
         let bridge = MapViewModel()
@@ -230,10 +232,10 @@ struct ContentView: View {
                         }
                     }
                     
-                    // 🎯 觸發雲端 API 測試按鈕
-                    MapControlButton(title: "☁️ 雲端 API", color: Color(red: 0, green: 0.44, blue: 0.95)) {
-                        myKmpBridge.fetchCloudJobs()
-                        showJobsSheet = true
+                    // 🎯 觸發雲端 API 測試按鈕 (海象 + 社群漁場)
+                    MapControlButton(title: "☁️ 海洋雲端資料", color: Color(red: 0, green: 0.44, blue: 0.95)) {
+                        myKmpBridge.fetchMarineCloudData() // 呼叫抓取海象與社群漁場 API
+                        showCloudSheet = true              // 展現包含兩頁籤的Sheet彈窗！
                     }
                     Spacer()
                 }
@@ -315,33 +317,49 @@ struct ContentView: View {
                 }
             }
         }
-        .sheet(isPresented: $showJobsSheet) {
-            VStack(spacing: 16) {
-                Text("Render 雲端職缺資料 (Go Backend)")
-                    .font(.headline)
-                    .padding(.top)
+        .sheet(isPresented: $showCloudSheet) {
+            VStack(spacing: 12) {
+                // 🎯 雙頁籤切換器
+                Picker("資料來源", selection: $selectedTab) {
+                    Text("🌊 氣象局即時海象").tag(0)
+                    Text("📍 社群雲端漁場").tag(1)
+                }
+                .pickerStyle(.segmented)
+                .padding([.top, .horizontal])
                 
-                if myKmpBridge.isLoadingJobs {
-                    ProgressView("⏳ 正在連線 Render API...")
-                        .padding()
-                } else if myKmpBridge.jobsList.isEmpty {
-                    Text("⚠️ 無資料或連線失敗")
-                        .foregroundColor(.gray)
+                if myKmpBridge.isLoadingCloudData {
+                    ProgressView("⏳ 連線 Go + PostgreSQL 伺服器...")
                         .padding()
                 } else {
-                    List(myKmpBridge.jobsList, id: \.self) { job in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("🏢 公司: \(job.company)")
-                            Text("💼 職缺: \(job.title)").bold()
-                            Text("📍 地點: \(job.location)").font(.caption).foregroundColor(.secondary)
+                    if selectedTab == 0 {
+                        // Tab 1: 氣象署 Open Data
+                        List(myKmpBridge.seaConditions, id: \.locationName) { sea in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("🏖️ \(sea.locationName)").font(.headline)
+                                HStack {
+                                    Text("🌊 浪高: \(sea.waveHeightM) m")
+                                    Spacer()
+                                    Text("💨 風速: \(sea.windSpeedKts) kts")
+                                }.font(.subheadline)
+                                Text("⏱️ \(sea.tideInfo)")
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
+                        }
+                    } else {
+                        // Tab 2: PostgreSQL 自建資料庫
+                        List(myKmpBridge.communitySpots, id: \.id) { spot in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("📍 \(spot.name)").font(.headline)
+                                Text("🐟 目標魚種: \(spot.fishType) | 水深: \(spot.depthMeters, specifier: "%.1f")m")
+                                    .font(.subheadline)
+                                Text("👤 建立者: \(spot.createdBy)")
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
                         }
                     }
                 }
                 
-                Button("關閉") {
-                    showJobsSheet = false
-                }
-                .padding(.bottom)
+                Button("關閉") { showCloudSheet = false }.padding(.bottom)
             }
             .presentationDetents([.medium, .large])
         }

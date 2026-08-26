@@ -55,6 +55,8 @@ kotlin {
             implementation("org.jetbrains.compose.components:components-resources:1.6.11")
             implementation("org.jetbrains.compose.material:material-icons-extended:1.6.11")
             // Ktor 核心與 Json 解析
+            // commonMain.dependencies 區塊內新增：
+            implementation("io.ktor:ktor-client-logging:$ktorVersion")
             implementation("io.ktor:ktor-client-core:$ktorVersion")
             implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
             implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")

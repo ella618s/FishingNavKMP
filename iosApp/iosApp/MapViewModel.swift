@@ -24,6 +24,10 @@ class MapViewModel: NSObject, ObservableObject, CLLocationManagerDelegate { // �
     @Published var jobsList: [JobItem] = []
     @Published var isLoadingJobs: Bool = false
     
+    @Published var seaConditions: [SeaCondition] = []
+    @Published var communitySpots: [CommunitySpot] = []
+    @Published var isLoadingCloudData: Bool = false
+    
     override init() {
         // 🎯 在 super.init() 之前初始化 KMP 類別
         self.detector = AnomalyDetector()
@@ -175,16 +179,33 @@ class MapViewModel: NSObject, ObservableObject, CLLocationManagerDelegate { // �
         return coordinates
     }
     
-    // 🎯 補上模擬遭遇暴流的方法
+    // 🎯 模擬遭遇暴流的方法
     func simulateAnomaly(lat: Double, lng: Double) {
         // 這裡確保呼叫的是 Kotlin SharedViewModel 的模擬方法
         self.sharedVM.simulateAnomaly(lat: lat, lng: lng)
     }
     
-    // 🎯 補上恢復正常的方法
+    // 🎯 恢復正常的方法
     func resetAnomaly(lat: Double, lng: Double) {
         // 這裡確保呼叫的是 Kotlin SharedViewModel 的恢復方法
         self.sharedVM.resetAnomaly(lat: lat, lng: lng)
+    }
+    
+    func fetchMarineCloudData() {
+        self.isLoadingCloudData = true
+        // 建立非同步 Task 去執行 API 請求
+        Task {
+            // 呼叫 Kotlin 抓取資料
+            self.sharedVM.fetchMarineCloudData()
+            // 稍等 2.5 秒確保 Render 後端網路請求回應完畢 (免費伺服器冷啟動較慢)
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            
+            DispatchQueue.main.async {
+                self.seaConditions = self.sharedVM.getSeaConditionsForIOS()
+                self.communitySpots = self.sharedVM.getCommunitySpotsForIOS()
+                self.isLoadingCloudData = false
+            }
+        }
     }
     
 }

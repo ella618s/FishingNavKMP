@@ -81,16 +81,31 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
     private val _isLoadingJobs = MutableStateFlow(false)
     val isLoadingJobs: StateFlow<Boolean> = _isLoadingJobs.asStateFlow()
 
+    private val apiClient = JobApiClient()
+    // 宣告海象與社群漁標 StateFlow
+    private val _seaConditions = MutableStateFlow<List<SeaCondition>>(emptyList())
+    val seaConditions: StateFlow<List<SeaCondition>> = _seaConditions.asStateFlow()
+
+    private val _communitySpots = MutableStateFlow<List<CommunitySpot>>(emptyList())
+    val communitySpots: StateFlow<List<CommunitySpot>> = _communitySpots.asStateFlow()
+
     /**
      * 🎯 呼叫 Go + PostgreSQL 雲端 API 取得職缺資料
      */
+    // 🎯 將原本請求 /jobs 的方法，改為呼叫海象與漁場 API
     fun fetchCloudJobs() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 _isLoadingJobs.value = true
-                val response = jobApiClient.fetchJobs()
-                _jobsList.value = response.data
-                println("☁️ [API Success] 成功取得 ${response.data.size} 筆雲端職缺")
+
+                // 抓取海象與社群漁場
+                val seaData = apiClient.fetchSeaConditions()
+                val spotData = apiClient.fetchCommunitySpots()
+
+                _seaConditions.value = seaData
+                _communitySpots.value = spotData
+
+                println("☁️ [API Success] 成功取得 ${seaData.size} 筆海象資料、${spotData.size} 筆漁場資料")
             } catch (e: Exception) {
                 println("❌ [API Error] 串接失敗: ${e.message}")
             } finally {
@@ -593,4 +608,23 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
     fun getJobsListForIOS(): List<JobItem> {
         return _jobsList.value
     }
+
+    // 抓取 API 方法
+    fun fetchMarineCloudData() {
+        viewModelScope.launch {
+            try {
+                val weather = apiClient.fetchSeaConditions()
+                _seaConditions.value = weather
+
+                val spots = apiClient.fetchCommunitySpots()
+                _communitySpots.value = spots
+            } catch (e: Exception) {
+                println("❌ API Fetch Error: ${e.message}")
+            }
+        }
+    }
+
+    // 供 iOS Swift 調用的 Helper 方法
+    fun getSeaConditionsForIOS(): List<SeaCondition> = _seaConditions.value
+    fun getCommunitySpotsForIOS(): List<CommunitySpot> = _communitySpots.value
 }
