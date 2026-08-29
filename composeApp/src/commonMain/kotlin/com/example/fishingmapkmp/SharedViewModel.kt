@@ -7,7 +7,6 @@ import kotlinx.coroutines.flow.StateFlow
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -94,7 +93,7 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
      */
     // 🎯 將原本請求 /jobs 的方法，改為呼叫海象與漁場 API
     fun fetchCloudJobs() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.Default) {
             try {
                 _isLoadingJobs.value = true
 
@@ -303,7 +302,7 @@ class SharedViewModel(private val detector: AnomalyDetector) : ViewModel() {
         west: Double,
         zoomLevels: IntRange
     ) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.Default) {
             var downloadedCount = 0
             val totalTiles = calculateTotalTiles(north, south, east, west, zoomLevels)
 
